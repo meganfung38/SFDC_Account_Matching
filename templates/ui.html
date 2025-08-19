@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account to Shell Account Assessment API - UI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ringcentral-theme.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="intro-banner">
+            <h2>🏢 Account to Shell Account Assessment API</h2>
+            <p style="font-size: 18px; margin: 0;">
+                <strong>Assess account to shell account relationships in Salesforce using AI-powered analysis.</strong>
+            </p>
+            <p>
+                Identify account relationships, potential shell accounts, and get actionable insights to improve your account hierarchy.
+            </p>
+        </div>
+        
+        <!-- SOQL Query Analysis Endpoint -->
+        <div class="endpoint">
+            <h2><span class="method-badge post">POST</span>/accounts/analyze-query</h2>
+            <div class="endpoint-description">
+                Validate SOQL queries and retrieve Account IDs for analysis. Enter complete SOQL queries that return Account IDs only.
+            </div>
+            
+            <form id="queryForm">
+                <label for="soqlQuery">SOQL Query - Must be complete query returning Account IDs:</label>
+                <textarea id="soqlQuery" placeholder="⚠️ IMPORTANT: Must be a complete SOQL query!&#10;&#10;Valid examples:&#10;• SELECT Id FROM Account WHERE Industry = 'Technology'&#10;• SELECT Id FROM Account WHERE Name LIKE '%Inc%' LIMIT 50&#10;• SELECT Account.Id FROM Account JOIN Contact ON...&#10;• SELECT Id FROM Account WHERE... UNION SELECT Id FROM Account WHERE...&#10;&#10;✅ Complete SELECT queries only&#10;❌ Cannot use WHERE/LIMIT clauses alone&#10;❌ Cannot leave blank"></textarea>
+                
+                <div class="form-row">
+                    <div>
+                        <label for="maxAnalyze">Max Account IDs to Return (1-500, or leave blank for all):</label>
+                        <input type="text" id="maxAnalyze" value="10" placeholder="Leave blank for all results">
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="submit" id="analyzeBtn">Validate Account IDs</button>
+                    <button type="button" id="getAccountDataBtn" disabled>Analyze Accounts</button>
+                    <button type="button" id="exportBtn" disabled class="export-btn">📊 Export to Excel</button>
+                </div>
+            </form>
+            
+            <div id="queryResponse" class="response" style="display: none;"></div>
+        </div>
+        
+        <!-- Account Data Endpoint -->
+        <div class="endpoint">
+            <h2><span class="method-badge get">GET</span>/account/{id}</h2>
+            <div class="endpoint-description">
+                Analyze a single account to understand its structure and characteristics.
+            </div>
+            
+            <form id="accountForm">
+                <label for="accountId">Salesforce Account ID:</label>
+                <input type="text" id="accountId" placeholder="0015e00000ABC123" maxlength="18">
+                
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit">Analyze Account</button>
+                    <button type="button" id="exportAccountBtn" disabled class="export-btn">📊 Export to Excel</button>
+                </div>
+            </form>
+            
+            <div id="accountResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Excel Upload Analysis Endpoint -->
+        <div class="endpoint">
+            <h2><span class="method-badge post">POST</span>/excel/validate-account-ids</h2>
+            <div class="endpoint-description">
+                Upload an Excel file containing Account IDs for validation and potential future analysis. The system will validate all Account IDs to ensure they exist in Salesforce and are valid Account object records.
+            </div>
+            
+            <form id="excelForm" enctype="multipart/form-data">
+                <div class="excel-upload-section">
+                    <label for="excelFile">Excel File (.xlsx or .xls):</label>
+                    <input type="file" id="excelFile" accept=".xlsx,.xls" required>
+                    <button type="button" id="parseExcelBtn" disabled>1. Parse File</button>
+                </div>
+                
+                <div id="excelConfig" class="excel-config" style="display: none;">
+                    <div class="form-row">
+                        <div>
+                            <label for="sheetSelect">Sheet:</label>
+                            <select id="sheetSelect"></select>
+                        </div>
+                        <div>
+                            <label for="accountIdColumn">Account ID Column:</label>
+                            <select id="accountIdColumn"></select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" id="validateAccountIdsBtn" disabled>2. Validate Account IDs</button>
+                        <button type="button" id="analyzeExcelBtn" disabled>3. Analyze Accounts</button>
+                        <button type="button" id="exportExcelBtn" disabled class="export-btn">📊 Export to Excel</button>
+                    </div>
+                </div>
+            </form>
+            
+            <div id="excelResponse" class="response" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/ui-handlers.js') }}"></script>
+</body>
+</html> 
