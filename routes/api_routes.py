@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, send_file
 from services.salesforce_service import SalesforceService
 from services.openai_service import test_openai_connection, test_openai_completion, get_openai_config
 from services.excel_service import ExcelService
+from services.fuzzy_matching_service import FuzzyMatchingService
 from config.config import Config
 
 # Create blueprint for API routes
@@ -10,13 +11,14 @@ api_bp = Blueprint('api', __name__)
 # Initialize services
 sf_service = SalesforceService()
 excel_service = ExcelService()
+fuzzy_matcher = FuzzyMatchingService()
 
 @api_bp.route('/api')
 def api_info():
     """API information endpoint"""
     return jsonify({
-        "message": "Account to Shell Account Assessment API",
-        "version": "1.0.0",
+        "message": "Dual-File Account Matching API",
+        "version": "2.0.0",
         "status": "running",
         "web_ui": "/",
         "endpoints": {
@@ -25,10 +27,11 @@ def api_info():
             "salesforce_test": "/test-salesforce-connection",
             "openai_test": "/test-openai-connection",
             "openai_completion": "/test-openai-completion",
-            "get_account": "/account/<account_id>",
-            "query_accounts": "/accounts",
-            "analyze_query": "/accounts/analyze-query",
-            "get_accounts_data": "/accounts/get-data"
+            "parse_excel": "/excel/parse",
+            "parse_customer_excel": "/excel/parse-customer-file",
+            "parse_shell_excel": "/excel/parse-shell-file",
+            "process_matching": "/matching/process-batch",
+            "export_results": "/export/matching-results"
         }
     })
 
@@ -37,7 +40,7 @@ def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy",
-        "service": "Account to Shell Account Assessment API"
+        "service": "Dual-File Account Matching API"
     })
 
 @api_bp.route('/debug-config')
@@ -88,59 +91,6 @@ def test_salesforce_connection():
         return jsonify({
             "status": "error",
             "message": f"Unexpected error: {str(e)}"
-        }), 500
-
-@api_bp.route('/account/<account_id>', methods=['GET', 'POST'])
-def get_account(account_id):
-    """Get specific Account data by Account ID"""
-    try:
-        result, message = sf_service.get_account_by_id(account_id)
-        
-        if result:
-            return jsonify({
-                "status": "success",
-                "message": message,
-                "data": result
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": message
-            }), 404
-            
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Unexpected error: {str(e)}"
-        }), 500
-
-@api_bp.route('/accounts', methods=['GET'])
-def query_accounts():
-    """Query accounts with optional filters"""
-    try:
-        # Get query parameters
-        limit = request.args.get('limit', 100, type=int)
-        where_clause = request.args.get('where')
-        
-        # Query accounts using the service
-        result, message = sf_service.query_accounts(where_clause, limit)
-        
-        if result is None:
-            return jsonify({
-                'status': 'error',
-                'message': message
-            }), 500
-        
-        return jsonify({
-            'status': 'success',
-            'message': message,
-            'data': result
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'Error querying accounts: {str(e)}'
         }), 500
 
 @api_bp.route('/test-openai-connection')
@@ -202,200 +152,53 @@ def test_openai_completion_endpoint():
             "message": f"Unexpected error: {str(e)}"
         }), 500
 
-@api_bp.route('/accounts/analyze-query', methods=['POST'])
-def analyze_accounts_query():
-    """Get Account IDs from a custom SOQL query that returns Account IDs only"""
-    try:
-        # Get JSON data from request
-        if not request.is_json:
-            return jsonify({
-                'status': 'error',
-                'message': 'Request must be JSON'
-            }), 400
-        
-        data = request.get_json()
-        
-        # Validate required fields
-        if 'soql_query' not in data:
-            return jsonify({
-                'status': 'error',
-                'message': 'Missing required field: soql_query'
-            }), 400
-        
-        soql_query = data['soql_query']
-        max_ids = data.get('max_ids', '')
-        
-        # Handle optional max_ids parameter
-        if max_ids == '' or max_ids is None:
-            max_ids = None  # No limit
-        else:
-            try:
-                max_ids = int(max_ids)
-                if max_ids < 1 or max_ids > 500:
-                    return jsonify({
-                        'status': 'error',
-                        'message': 'max_ids must be an integer between 1 and 500, or leave blank for all results'
-                    }), 400
-            except (ValueError, TypeError):
-                return jsonify({
-                    'status': 'error',
-                    'message': 'max_ids must be a valid number, or leave blank for all results'
-                }), 400
-        
-        # Get Account IDs from query
-        result, message = sf_service.get_account_ids_from_query(soql_query, max_ids)
-        
-        if result is None:
-            # Check if it's a validation error or just no results
-            if "Invalid" in message or "Error" in message:
-                return jsonify({
-                    'status': 'error',
-                    'message': message
-                }), 400
-            else:
-                # No results is not an error
-                return jsonify({
-                    'status': 'success',
-                    'message': message,
-                    'data': {
-                        'account_ids': [],
-                        'summary': {
-                            'total_found': 0,
-                            'execution_time': '0.00s',
-                            'effective_limit': max_ids
-                        }
-                    }
-                })
-        
-        # Success with results
-        return jsonify({
-            'status': 'success',
-            'message': message,
-            'data': result
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        }), 500
-
-@api_bp.route('/accounts/get-data', methods=['POST'])
-def get_accounts_data():
-    """Get full Account data for a list of Account IDs"""
-    try:
-        # Get JSON data from request
-        if not request.is_json:
-            return jsonify({
-                'status': 'error',
-                'message': 'Request must be JSON'
-            }), 400
-        
-        data = request.get_json()
-        
-        # Validate required fields
-        if 'account_ids' not in data:
-            return jsonify({
-                'status': 'error',
-                'message': 'Missing required field: account_ids'
-            }), 400
-        
-        account_ids = data['account_ids']
-        
-        # Validate account_ids is a list
-        if not isinstance(account_ids, list):
-            return jsonify({
-                'status': 'error',
-                'message': 'account_ids must be a list'
-            }), 400
-        
-        # Validate not too many IDs
-        if len(account_ids) > 500:
-            return jsonify({
-                'status': 'error',
-                'message': 'Cannot request data for more than 500 accounts at once'
-            }), 400
-        
-        # Get full Account data
-        result, message = sf_service.get_accounts_data_by_ids(account_ids)
-        
-        if result is None:
-            return jsonify({
-                'status': 'error',
-                'message': message
-            }), 400
-        
-        return jsonify({
-            'status': 'success',
-            'message': message,
-            'data': result
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': f'Error getting Account data: {str(e)}'
-        }), 500
+# NEW DUAL-FILE MATCHING ENDPOINTS
 
 @api_bp.route('/excel/parse', methods=['POST'])
 def parse_excel_file():
-    """Parse uploaded Excel file and return sheet names and preview data"""
+    """Parse Excel file to get sheet names and headers (structure only)"""
     try:
         # Check if file is present
         if 'file' not in request.files:
             return jsonify({
-                'status': 'error',
-                'message': 'No file uploaded'
+                'success': False,
+                'error': 'No file uploaded'
             }), 400
         
         file = request.files['file']
         
         if file.filename == '':
             return jsonify({
-                'status': 'error',
-                'message': 'No file selected'
-            }), 400
-        
-        # Validate file extension
-        filename = file.filename
-        if not filename or not filename.lower().endswith(('.xlsx', '.xls')):
-            return jsonify({
-                'status': 'error',
-                'message': 'File must be an Excel file (.xlsx or .xls)'
+                'success': False,
+                'error': 'No file selected'
             }), 400
         
         # Read file content
         file_content = file.read()
         
-        # Parse the Excel file
+        # Parse the Excel file structure
         result = excel_service.parse_excel_file(file_content)
         
         if result['success']:
             return jsonify({
-                'status': 'success',
-                'message': 'Excel file parsed successfully',
-                'data': {
-                    'sheet_names': result['sheet_names'],
-                    'headers': result['headers'],
-                    'preview_data': result['preview_data'],
-                    'total_rows': result['total_rows']
-                }
+                'success': True,
+                'data': result
             })
         else:
             return jsonify({
-                'status': 'error',
-                'message': result['error']
+                'success': False,
+                'error': result['error']
             }), 400
-        
+            
     except Exception as e:
         return jsonify({
-            'status': 'error',
-            'message': f'Error parsing Excel file: {str(e)}'
+            'success': False,
+            'error': f'Error parsing Excel file: {str(e)}'
         }), 500
 
-@api_bp.route('/excel/validate-account-ids', methods=['POST'])
-def validate_excel_account_ids():
-    """Validate Account IDs from Excel file upload and return Account data"""
+@api_bp.route('/excel/parse-customer-file', methods=['POST'])
+def parse_customer_excel():
+    """Parse uploaded customer Excel file and validate account IDs"""
     try:
         # Check if file is present
         if 'file' not in request.files:
@@ -452,7 +255,7 @@ def validate_excel_account_ids():
             }), 400
         
         # Validate Account IDs with Salesforce
-        validation_result, validation_message = sf_service.validate_account_ids(account_ids)
+        validation_result, validation_message = sf_service.validate_customer_account_ids(account_ids)
         
         if validation_result is None:
             return jsonify({
@@ -460,48 +263,29 @@ def validate_excel_account_ids():
                 'message': validation_message
             }), 500
         
-        # Check if any Account IDs are invalid
+        # Include both valid and invalid IDs in response (no longer terminate on invalid IDs)
         invalid_account_ids = validation_result.get('invalid_account_ids', [])
-        if invalid_account_ids:
-            return jsonify({
-                'status': 'error',
-                'message': f'Invalid Account IDs found: {", ".join(invalid_account_ids)}. All Account IDs must be valid to proceed with analysis.',
-                'data': {
-                    'invalid_account_ids': invalid_account_ids,
-                    'valid_account_ids': validation_result.get('valid_account_ids', []),
-                    'total_from_excel': len(account_ids)
-                }
-            }), 400
+        valid_count = len(validation_result.get('valid_account_ids', []))
+        invalid_count = len(invalid_account_ids)
         
-        # All Account IDs are valid - now get the Account data
-        valid_account_ids = validation_result['valid_account_ids']
-        
-        # Get full Account data for the valid IDs
-        account_data_result, account_data_message = sf_service.get_accounts_data_by_ids(valid_account_ids)
-        
-        if account_data_result is None:
-            return jsonify({
-                'status': 'error',
-                'message': f'Account IDs validated successfully, but failed to retrieve Account data: {account_data_message}'
-            }), 500
+        if invalid_count > 0:
+            invalid_ids_list = ', '.join(invalid_account_ids[:5])  # Show first 5 invalid IDs
+            if invalid_count > 5:
+                invalid_ids_list += f' (and {invalid_count - 5} more)'
+            message = f'Validation complete: {valid_count} valid, {invalid_count} invalid customer account IDs. Invalid IDs: [{invalid_ids_list}]. Invalid IDs will be excluded from matching.'
+        else:
+            message = f'Successfully validated {valid_count} customer account IDs'
         
         return jsonify({
             'status': 'success',
-            'message': f'Successfully validated and retrieved data for {len(valid_account_ids)} accounts from Excel file',
+            'message': message,
             'data': {
-                'validation_summary': {
-                    'total_ids_from_excel': len(account_ids),
-                    'valid_account_ids': len(valid_account_ids),
-                    'invalid_account_ids': 0,
-                    'original_data_rows': extraction_result['total_rows']
-                },
-                'accounts': account_data_result['accounts'],
-                'original_excel_data': extraction_result['original_data'],  # Add original Excel data
-                'execution_time': account_data_result['execution_time'],
+                'validation_summary': validation_result,
                 'excel_info': {
                     'sheet_name': sheet_name,
                     'account_id_column': account_id_column,
-                    'file_name': file.filename
+                    'file_name': file.filename,
+                    'total_rows': extraction_result['total_rows']
                 }
             }
         })
@@ -509,111 +293,256 @@ def validate_excel_account_ids():
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': f'Error processing Excel file: {str(e)}'
+            'message': f'Error processing customer Excel file: {str(e)}'
         }), 500
 
-@api_bp.route('/export/soql-analysis', methods=['POST'])
-def export_soql_analysis():
-    """Export SOQL analysis results to Excel"""
+@api_bp.route('/excel/parse-shell-file', methods=['POST'])
+def parse_shell_excel():
+    """Parse uploaded shell Excel file and validate account IDs"""
     try:
-        data = request.get_json()
-        if not data or 'accounts' not in data:
+        # Check if file is present
+        if 'file' not in request.files:
             return jsonify({
-                "status": "error",
-                "message": "No analysis data provided for export"
+                'status': 'error',
+                'message': 'No file uploaded'
             }), 400
         
-        accounts = data['accounts']
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({
+                'status': 'error',
+                'message': 'No file selected'
+            }), 400
+        
+        # Get form data
+        sheet_name = request.form.get('sheet_name')
+        account_id_column = request.form.get('account_id_column')
+        
+        # Validate parameters
+        if not sheet_name:
+            return jsonify({
+                'status': 'error',
+                'message': 'Sheet name is required'
+            }), 400
+        
+        if not account_id_column:
+            return jsonify({
+                'status': 'error',
+                'message': 'Account ID column is required'
+            }), 400
+        
+        # Read file content
+        file_content = file.read()
+        
+        # Extract Account IDs from Excel
+        extraction_result = excel_service.extract_account_ids_from_excel(
+            file_content, sheet_name, account_id_column
+        )
+        
+        if not extraction_result['success']:
+            return jsonify({
+                'status': 'error',
+                'message': extraction_result['error']
+            }), 400
+        
+        account_ids = extraction_result['account_ids']
+        
+        if not account_ids:
+            return jsonify({
+                'status': 'error',
+                'message': f'No valid Account IDs found in column "{account_id_column}"'
+            }), 400
+        
+        # Validate shell Account IDs with Salesforce
+        validation_result, validation_message = sf_service.validate_shell_account_ids(account_ids)
+        
+        if validation_result is None:
+            return jsonify({
+                'status': 'error',
+                'message': validation_message
+            }), 500
+        
+        # Include both valid and invalid IDs in response (no longer terminate on invalid IDs)
+        invalid_account_ids = validation_result.get('invalid_account_ids', [])
+        valid_count = len(validation_result.get('valid_account_ids', []))
+        invalid_count = len(invalid_account_ids)
+        
+        if invalid_count > 0:
+            invalid_ids_list = ', '.join(invalid_account_ids[:5])  # Show first 5 invalid IDs
+            if invalid_count > 5:
+                invalid_ids_list += f' (and {invalid_count - 5} more)'
+            message = f'Validation complete: {valid_count} valid, {invalid_count} invalid shell account IDs. Invalid IDs: [{invalid_ids_list}]. Invalid IDs will be excluded from matching.'
+        else:
+            message = f'Successfully validated {valid_count} shell account IDs'
+        
+        return jsonify({
+            'status': 'success',
+            'message': message,
+            'data': {
+                'validation_summary': validation_result,
+                'excel_info': {
+                    'sheet_name': sheet_name,
+                    'account_id_column': account_id_column,
+                    'file_name': file.filename,
+                    'total_rows': extraction_result['total_rows']
+                }
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Error processing shell Excel file: {str(e)}'
+        }), 500
+
+@api_bp.route('/matching/process-batch', methods=['POST'])
+def process_matching_batch():
+    """Process dual-file matching between customer and shell accounts"""
+    try:
+        data = request.get_json()
+        if not data or 'customer_account_ids' not in data or 'shell_account_ids' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required fields: customer_account_ids and shell_account_ids"
+            }), 400
+        
+        customer_account_ids = data['customer_account_ids']
+        shell_account_ids = data['shell_account_ids']
+        invalid_customer_ids = data.get('invalid_customer_ids', [])
+        invalid_shell_ids = data.get('invalid_shell_ids', [])
+        
+        if not isinstance(customer_account_ids, list) or not isinstance(shell_account_ids, list):
+            return jsonify({
+                "status": "error",
+                "message": "customer_account_ids and shell_account_ids must be lists"
+            }), 400
+        
+        if len(customer_account_ids) == 0 or len(shell_account_ids) == 0:
+            return jsonify({
+                "status": "error",
+                "message": "At least one customer and one shell account ID must be provided"
+            }), 400
+        
+        # Get customer account data from Salesforce
+        customer_data, customer_message = sf_service.get_customer_accounts_bulk(customer_account_ids)
+        if customer_data is None:
+            return jsonify({
+                "status": "error",
+                "message": f"Error retrieving customer account data: {customer_message}"
+            }), 500
+        
+        # Get shell account data from Salesforce  
+        shell_data, shell_message = sf_service.get_shell_accounts_bulk(shell_account_ids)
+        if shell_data is None:
+            return jsonify({
+                "status": "error",
+                "message": f"Error retrieving shell account data: {shell_message}"
+            }), 500
+        
+        # Filter customer accounts by bad domains
+        clean_customers, flagged_customers = sf_service.filter_customer_accounts_by_bad_domains(customer_data)
+        
+        # Process matching for clean customer accounts
+        import time
+        from services.openai_service import get_ai_match_assessment
+        
+        start_time = time.time()
+        matched_pairs = []
+        unmatched_customers = []
+        
+        for customer in clean_customers:
+            # Find best shell match using fuzzy matching
+            match_result = fuzzy_matcher.find_best_shell_match(customer, shell_data)
+            
+            if match_result['success']:
+                best_match = match_result['best_match']
+                
+                # Get AI assessment for the match
+                ai_assessment = get_ai_match_assessment(
+                    customer, 
+                    best_match['shell_account'], 
+                    best_match
+                )
+                
+                # Create match pair result
+                match_pair = {
+                    'customer_account': customer,
+                    'recommended_shell': best_match['shell_account'],
+                    'match_confidence': best_match['confidence_score'],
+                    'website_match': best_match['website_match'],
+                    'name_match': best_match['name_match'], 
+                    'address_consistency': best_match['address_consistency'],
+                    'explanations': best_match['explanations'],
+                    'ai_assessment': {
+                        'confidence_score': ai_assessment.get('confidence_score', 0),
+                        'explanation_bullets': ai_assessment.get('explanation_bullets', []),
+                        'success': ai_assessment.get('success', False)
+                    },
+                    'candidate_count': match_result['candidate_count'],
+                    'total_shells': match_result['total_shells']
+                }
+                matched_pairs.append(match_pair)
+            else:
+                unmatched_customers.append({
+                    'customer_account': customer,
+                    'reason': match_result['message']
+                })
+        
+        execution_time = time.time() - start_time
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Matching completed successfully in {execution_time:.2f}s",
+            "data": {
+                "summary": {
+                    "total_customer_accounts": len(customer_data) + len(invalid_customer_ids),
+                    "clean_customer_accounts": len(clean_customers),
+                    "flagged_customer_accounts": len(flagged_customers),
+                    "invalid_customer_accounts": len(invalid_customer_ids),
+                    "total_shell_accounts": len(shell_data) + len(invalid_shell_ids),
+                    "invalid_shell_accounts": len(invalid_shell_ids),
+                    "matched_pairs": len(matched_pairs),
+                    "unmatched_customers": len(unmatched_customers),
+                    "execution_time": f"{execution_time:.2f}s"
+                },
+                "matched_pairs": matched_pairs,
+                "unmatched_customers": unmatched_customers,
+                "flagged_customers": flagged_customers,
+                "invalid_customers": invalid_customer_ids
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error processing matching batch: {str(e)}"
+        }), 500
+
+@api_bp.route('/export/matching-results', methods=['POST'])
+def export_matching_results():
+    """Export dual-file matching results to Excel"""
+    try:
+        data = request.get_json()
+        if not data or 'matched_pairs' not in data:
+            return jsonify({
+                "status": "error",
+                "message": "No matching results data provided for export"
+            }), 400
+        
+        matched_pairs = data['matched_pairs']
+        unmatched_customers = data.get('unmatched_customers', [])
+        flagged_customers = data.get('flagged_customers', [])
+        invalid_customers = data.get('invalid_customers', [])
         summary = data.get('summary', {})
         
         # Create Excel export
-        excel_service = ExcelService()
-        export_result = excel_service.create_analysis_export(
-            accounts=accounts,
-            summary=summary,
-            export_type="soql_analysis"
-        )
-        
-        if export_result['success']:
-            return send_file(
-                export_result['file_buffer'],
-                as_attachment=True,
-                download_name=export_result['filename'],
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-        else:
-            return jsonify({
-                "status": "error",
-                "message": export_result['error']
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Export failed: {str(e)}"
-        }), 500
-
-@api_bp.route('/export/single-account', methods=['POST'])
-def export_single_account():
-    """Export single account analysis to Excel"""
-    try:
-        data = request.get_json()
-        if not data or 'account' not in data:
-            return jsonify({
-                "status": "error",
-                "message": "No account data provided for export"
-            }), 400
-        
-        account = data['account']
-        
-        # Create Excel export
-        excel_service = ExcelService()
-        export_result = excel_service.create_analysis_export(
-            accounts=[account],
-            summary={'total_requested': 1, 'accounts_retrieved': 1},
-            export_type="single_account"
-        )
-        
-        if export_result['success']:
-            return send_file(
-                export_result['file_buffer'],
-                as_attachment=True,
-                download_name=export_result['filename'],
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-        else:
-            return jsonify({
-                "status": "error",
-                "message": export_result['error']
-            }), 500
-            
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Export failed: {str(e)}"
-        }), 500
-
-@api_bp.route('/export/excel-analysis', methods=['POST'])
-def export_excel_analysis():
-    """Export Excel analysis results with original data"""
-    try:
-        data = request.get_json()
-        if not data or 'accounts' not in data or 'original_data' not in data:
-            return jsonify({
-                "status": "error",
-                "message": "No analysis data or original Excel data provided for export"
-            }), 400
-        
-        accounts = data['accounts']
-        original_data = data['original_data']
-        excel_info = data.get('excel_info', {})
-        
-        # Create Excel export
-        excel_service = ExcelService()
-        export_result = excel_service.create_excel_analysis_export(
-            accounts=accounts,
-            original_data=original_data,
-            excel_info=excel_info
+        export_result = excel_service.create_matching_results_export(
+            matched_pairs=matched_pairs,
+            unmatched_customers=unmatched_customers,
+            flagged_customers=flagged_customers,
+            invalid_customers=invalid_customers,
+            summary=summary
         )
         
         if export_result['success']:

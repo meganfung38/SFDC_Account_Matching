@@ -36,10 +36,6 @@ class ExcelService:
     
 
     
-    
-    
-
-    
     def parse_excel_file(self, file_content):
         """Parse uploaded Excel file and return sheet names and preview data"""
         try:
@@ -47,37 +43,47 @@ class ExcelService:
             wb = load_workbook(io.BytesIO(file_content), read_only=True)
             sheet_names = wb.sheetnames
             
-            # Get preview data from first sheet
-            first_sheet = wb[sheet_names[0]]
-            
-            # Read first 10 rows for preview
+            # Get headers for ALL sheets (not just first one)
+            all_headers = {}
             preview_data = []
-            headers = []
+            total_rows = 0
             
-            for row_idx, row in enumerate(first_sheet.iter_rows(values_only=True)):
-                if row_idx == 0:
-                    # First row as headers
-                    headers = [cell if cell is not None else f"Column_{i+1}" for i, cell in enumerate(row)]
-                elif row_idx < 11:  # First 10 data rows
-                    row_data = [cell if cell is not None else "" for cell in row]
-                    # Pad row to match header length
-                    while len(row_data) < len(headers):
-                        row_data.append("")
-                    preview_data.append(row_data[:len(headers)])  # Trim to header length
-                else:
-                    break
+            for sheet_name in sheet_names:
+                sheet = wb[sheet_name]
+                
+                # Get headers for this sheet
+                sheet_headers = []
+                first_row = next(sheet.iter_rows(values_only=True), None)
+                if first_row:
+                    sheet_headers = [cell if cell is not None else f"Column_{i+1}" for i, cell in enumerate(first_row)]
+                
+                all_headers[sheet_name] = sheet_headers
+                
+                # Only get preview data for the first sheet
+                if sheet_name == sheet_names[0]:
+                    for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
+                        if row_idx == 0:
+                            continue  # Skip header row
+                        elif row_idx < 11:  # First 10 data rows
+                            row_data = [cell if cell is not None else "" for cell in row]
+                            # Pad row to match header length
+                            while len(row_data) < len(sheet_headers):
+                                row_data.append("")
+                            preview_data.append(row_data[:len(sheet_headers)])  # Trim to header length
+                        else:
+                            break
+                    
+                    # Calculate total rows for first sheet
+                    total_rows = (sheet.max_row - 1) if sheet.max_row else 0
             
             wb.close()
-            
-            # Calculate total rows safely (max_row can be None for empty sheets)
-            total_rows = (first_sheet.max_row - 1) if first_sheet.max_row else 0
             
             return {
                 'success': True,
                 'sheet_names': sheet_names,
-                'headers': headers,
+                'headers': all_headers,  # Headers for ALL sheets
                 'preview_data': preview_data,
-                'total_rows': max(total_rows, len(preview_data))  # Use actual data count if max_row is unreliable
+                'total_rows': max(total_rows, len(preview_data))
             }
             
         except Exception as e:
@@ -136,28 +142,6 @@ class ExcelService:
                 'success': False,
                 'error': f"Error extracting Account IDs: {str(e)}"
             }
-    
-    def _convert_15_to_18_char_id(self, id_15):
-        """Convert 15-character Salesforce ID to 18-character format"""
-        if len(id_15) != 15:
-            return id_15
-        
-        # Salesforce ID conversion algorithm
-        suffix = ""
-        for i in range(3):
-            chunk = id_15[i*5:(i+1)*5]
-            chunk_value = 0
-            for j, char in enumerate(chunk):
-                if char.isupper():
-                    chunk_value += 2 ** j
-            
-            # Convert to base-32 character
-            if chunk_value < 26:
-                suffix += chr(ord('A') + chunk_value)
-            else:
-                suffix += str(chunk_value - 26)
-        
-        return id_15 + suffix
 
     def create_basic_excel(self, data, headers, title="Data Export", filename_prefix="export"):
         """Create a basic Excel file with data and headers"""
@@ -223,407 +207,320 @@ class ExcelService:
                 'error': f"Error creating Excel file: {str(e)}"
             } 
 
-    def create_analysis_export(self, accounts, summary, export_type="analysis"):
-        """Create Excel export for analysis results with single table format"""
+    def create_matching_results_export(self, matched_pairs, unmatched_customers=None, flagged_customers=None, invalid_customers=None, summary=None):
+        """Create Excel export for dual-file matching results with one row per customer account"""
         try:
             wb = Workbook()
-            ws = wb.active
-            ws.title = "Account Analysis"
             
-            # Add title to sheet
+            # Sheet 1: Complete Customer Match Results (ALL customers)
+            ws_results = wb.active
+            ws_results.title = "Customer Match Results"
+            
+            # Add title
             current_row = 1
-            title = f"SFDC Account Analysis - {export_type.replace('_', ' ').title()}"
-            ws.merge_cells(f'A{current_row}:K{current_row}')
-            ws[f'A{current_row}'] = title
-            ws[f'A{current_row}'].font = Font(bold=True, size=16, color="FFFFFF")
-            ws[f'A{current_row}'].alignment = self.center_alignment
-            ws[f'A{current_row}'].fill = PatternFill(start_color="FF7A00", end_color="FF7A00", fill_type="solid")
+            title = "Customer-to-Shell Account Matching Results"
+            ws_results.merge_cells(f'A{current_row}:S{current_row}')
+            ws_results[f'A{current_row}'] = title
+            ws_results[f'A{current_row}'].font = self.title_font
+            ws_results[f'A{current_row}'].alignment = self.center_alignment
+            ws_results[f'A{current_row}'].fill = PatternFill(start_color=self.rc_cerulean, end_color=self.rc_cerulean, fill_type="solid")
             current_row += 1
             
-            # Add timestamp
-            ws.merge_cells(f'A{current_row}:K{current_row}')
-            ws[f'A{current_row}'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            ws[f'A{current_row}'].alignment = self.center_alignment
+            # Add timestamp and summary
+            ws_results.merge_cells(f'A{current_row}:S{current_row}')
+            ws_results[f'A{current_row}'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            ws_results[f'A{current_row}'].alignment = self.center_alignment
+            current_row += 1
+            
+            if summary:
+                ws_results.merge_cells(f'A{current_row}:S{current_row}')
+                summary_text = f"Total Customers: {summary.get('total_customer_accounts', 0)} | Matched: {summary.get('matched_pairs', 0)} | Unmatched: {summary.get('unmatched_customers', 0)} | Flagged: {summary.get('flagged_customer_accounts', 0)} | Processing Time: {summary.get('execution_time', 'N/A')}"
+                ws_results[f'A{current_row}'] = summary_text
+                ws_results[f'A{current_row}'].alignment = self.center_alignment
             current_row += 2
             
-            # Add Summary Table
-            ws.merge_cells(f'A{current_row}:K{current_row}')
-            ws[f'A{current_row}'] = "📊 Analysis Summary"
-            ws[f'A{current_row}'].font = Font(bold=True, size=14, color="2C5AA0")
-            ws[f'A{current_row}'].fill = PatternFill(start_color="F1EFEC", end_color="F1EFEC", fill_type="solid")
-            current_row += 1
-            
-            # Summary table headers
-            summary_headers = ["Metric", "Value"]
-            for col, header in enumerate(summary_headers, 1):
-                cell = ws.cell(row=current_row, column=col, value=header)
-                cell.font = self.header_font
-                cell.fill = PatternFill(start_color="0684BC", end_color="0684BC", fill_type="solid")
-                cell.alignment = self.center_alignment
-                cell.border = self.border
-            current_row += 1
-            
-            # Summary metrics
-            summary_metrics = [
-                ["Total Accounts Requested", summary.get('total_requested', 0)],
-                ["Accounts Retrieved", summary.get('accounts_retrieved', 0)],
-                ["Accounts with Shell", sum(1 for acc in accounts if acc.get('Has_Shell', False))],
-                ["Average Customer Consistency Score", 
-                 round(sum(acc.get('Customer_Consistency', {}).get('score', 0) for acc in accounts) / len(accounts), 1) if accounts else 0],
-                ["Average Customer-Shell Coherence Score", 
-                 round(sum(acc.get('Customer_Shell_Coherence', {}).get('score', 0) for acc in accounts if acc.get('Has_Shell', False)) / 
-                       sum(1 for acc in accounts if acc.get('Has_Shell', False)), 1) if any(acc.get('Has_Shell', False) for acc in accounts) else 0],
-                ["Accounts with Address Consistency", 
-                 sum(1 for acc in accounts if acc.get('Address_Consistency', {}).get('is_consistent', False))],
-                ["Average AI Confidence Score", 
-                 round(sum(acc.get('AI_Assessment', {}).get('confidence_score', 0) for acc in accounts) / len(accounts), 1) if accounts else 0]
-            ]
-            
-            for metric in summary_metrics:
-                ws[f'A{current_row}'] = metric[0]
-                ws[f'B{current_row}'] = metric[1]
-                ws[f'A{current_row}'].font = Font(bold=True)
-                ws[f'A{current_row}'].border = self.border
-                ws[f'B{current_row}'].border = self.border
-                current_row += 1
-            
-            current_row += 2
-            
-            # Add Analysis Table Header
-            ws.merge_cells(f'A{current_row}:K{current_row}')
-            ws[f'A{current_row}'] = "📋 Account Analysis Results"
-            ws[f'A{current_row}'].font = Font(bold=True, size=14, color="2C5AA0")
-            ws[f'A{current_row}'].fill = PatternFill(start_color="F1EFEC", end_color="F1EFEC", fill_type="solid")
-            current_row += 1
-            
-            # Define headers for analysis table
+            # Headers for complete results table
             headers = [
-                # Account Identification (Frozen)
-                "Account ID", "Account Name",
-                # Account Metadata
-                "Record Type", "Parent ID", "Parent Name", "Website", 
-                "Billing State", "Billing Country", "Billing Postal Code",
-                "ZI Company", "ZI Website", "ZI State", "ZI Country", "ZI Postal Code",
-                "Contact Most Frequent Email",
-                # Assessment Flags
-                "Bad Domain", "Bad Domain Explanation",
-                "Has Shell", "Has Shell Explanation",
-                "Customer Consistency Score", "Customer Consistency Explanation",
-                "Customer-Shell Coherence Score", "Customer-Shell Coherence Explanation",
-                "Address Consistency", "Address Consistency Explanation",
-                # AI Assessment
-                "AI Confidence Score", "AI Analysis"
+                "Customer ID", "Customer Name", "Customer Website", "Customer Billing Address",
+                "Match Status", "Match Reason",
+                "Recommended Shell ID", "Shell Name", "Shell ZI ID", "Shell Website", "Shell Billing Address",
+                "Overall Match Confidence", "Website Match Score", "Name Match Score", "Address Consistency Score",
+                "AI Confidence Score", "AI Explanation",
+                "Candidate Count", "Processing Notes"
             ]
             
             # Add headers
             for col, header in enumerate(headers, 1):
-                cell = ws.cell(row=current_row, column=col, value=header)
+                cell = ws_results.cell(row=current_row, column=col, value=header)
                 cell.font = self.header_font
-                cell.fill = PatternFill(start_color="0684BC", end_color="0684BC", fill_type="solid")
+                cell.fill = self.header_fill
                 cell.alignment = self.center_alignment
                 cell.border = self.border
             current_row += 1
             
-            # Add data rows
-            for row_idx, account in enumerate(accounts, current_row):
-                # Get flag explanations
-                has_shell_explanation = "Account has parent shell relationship" if account.get('Has_Shell', False) else "No parent shell relationship"
-                customer_consistency_explanation = account.get('Customer_Consistency', {}).get('explanation', '')
-                customer_shell_coherence_explanation = account.get('Customer_Shell_Coherence', {}).get('explanation', '') if account.get('Has_Shell', False) else 'N/A - No shell relationship'
-                address_consistency_explanation = account.get('Address_Consistency', {}).get('explanation', '')
+            # Create a comprehensive list of ALL customers with their status
+            all_customer_results = []
+            
+            # 1. Add matched customers
+            for pair in matched_pairs:
+                customer = pair['customer_account']
+                shell = pair['recommended_shell']
+                ai_assessment = pair.get('ai_assessment', {})
                 
-                # Get AI analysis
-                ai_assessment = account.get('AI_Assessment', {})
+                all_customer_results.append({
+                    'customer': customer,
+                    'status': 'MATCHED',
+                    'reason': f"Matched to shell account with {pair.get('match_confidence', 0):.1f}% confidence",
+                    'shell': shell,
+                    'match_confidence': pair.get('match_confidence', 0),
+                    'website_match': pair.get('website_match', 0),
+                    'name_match': pair.get('name_match', 0),
+                    'address_consistency': pair.get('address_consistency', 0),
+                    'ai_assessment': ai_assessment,
+                    'candidate_count': pair.get('candidate_count', 0),
+                    'total_shells': pair.get('total_shells', 0)
+                })
+            
+            # 2. Add unmatched customers
+            if unmatched_customers:
+                for unmatched in unmatched_customers:
+                    customer = unmatched['customer_account']
+                    
+                    all_customer_results.append({
+                        'customer': customer,
+                        'status': 'UNMATCHED',
+                        'reason': unmatched.get('reason', 'No suitable shell match found'),
+                        'shell': None,
+                        'match_confidence': 0,
+                        'website_match': 0,
+                        'name_match': 0,
+                        'address_consistency': 0,
+                        'ai_assessment': {},
+                        'candidate_count': 0,
+                        'total_shells': 0
+                    })
+            
+            # 3. Add flagged customers
+            if flagged_customers:
+                for flagged in flagged_customers:
+                    bad_domain_info = flagged.get('Bad_Domain', {})
+                    
+                    all_customer_results.append({
+                        'customer': flagged,
+                        'status': 'FLAGGED',
+                        'reason': f"Excluded from matching: {bad_domain_info.get('explanation', 'Bad domain detected')}",
+                        'shell': None,
+                        'match_confidence': 0,
+                        'website_match': 0,
+                        'name_match': 0,
+                        'address_consistency': 0,
+                        'ai_assessment': {},
+                        'candidate_count': 0,
+                        'total_shells': 0
+                    })
+            
+            # 4. Add invalid customers
+            if invalid_customers:
+                for invalid_id in invalid_customers:
+                    # Create a minimal customer object for invalid IDs
+                    all_customer_results.append({
+                        'customer': {'Id': invalid_id, 'Name': 'INVALID ACCOUNT ID', 'Website': '', 'BillingCity': '', 'BillingState': '', 'BillingCountry': '', 'BillingPostalCode': ''},
+                        'status': 'INVALID',
+                        'reason': 'Invalid Account ID - does not exist in Salesforce',
+                        'shell': None,
+                        'match_confidence': 0,
+                        'website_match': 0,
+                        'name_match': 0,
+                        'address_consistency': 0,
+                        'ai_assessment': {},
+                        'candidate_count': 0,
+                        'total_shells': 0
+                    })
+            
+            # Sort results by customer name for better readability
+            all_customer_results.sort(key=lambda x: x['customer'].get('Name', ''))
+            
+            # Add ALL customer results to the table
+            for result in all_customer_results:
+                customer = result['customer']
+                shell = result['shell']
+                ai_assessment = result['ai_assessment']
+                
+                # Format customer address
+                customer_address_parts = []
+                if customer.get('BillingCity'):
+                    customer_address_parts.append(customer['BillingCity'])
+                if customer.get('BillingState'):
+                    customer_address_parts.append(customer['BillingState'])
+                if customer.get('BillingCountry'):
+                    customer_address_parts.append(customer['BillingCountry'])
+                if customer.get('BillingPostalCode'):
+                    customer_address_parts.append(customer['BillingPostalCode'])
+                customer_address = ', '.join(customer_address_parts)
+                
+                # Format shell address (if matched)
+                shell_address = ''
+                if shell:
+                    shell_address_parts = []
+                    if shell.get('ZI_Company_City__c'):
+                        shell_address_parts.append(shell['ZI_Company_City__c'])
+                    if shell.get('ZI_Company_State__c'):
+                        shell_address_parts.append(shell['ZI_Company_State__c'])
+                    if shell.get('ZI_Company_Country__c'):
+                        shell_address_parts.append(shell['ZI_Company_Country__c'])
+                    if shell.get('ZI_Company_Postal_Code__c'):
+                        shell_address_parts.append(shell['ZI_Company_Postal_Code__c'])
+                    shell_address = ', '.join(shell_address_parts)
+                
+                # Format AI explanation
                 ai_bullets = ai_assessment.get('explanation_bullets', [])
-                ai_analysis = "\n".join([f"• {bullet}" for bullet in ai_bullets]) if ai_bullets else "No AI analysis available"
+                ai_explanation = '\n'.join(ai_bullets) if ai_bullets else ('No AI analysis (not matched)' if result['status'] != 'MATCHED' else 'No AI explanation available')
                 
-                # Get assessment flag explanations
-                bad_domain_explanation = account.get('Bad_Domain', {}).get('explanation', '')
+                # Determine processing notes
+                if result['status'] == 'MATCHED':
+                    processing_notes = f"Evaluated {result['total_shells']} shell candidates, found {result['candidate_count']} potential matches"
+                elif result['status'] == 'UNMATCHED':
+                    processing_notes = "No matching shell candidates met minimum similarity threshold"
+                else:  # FLAGGED
+                    processing_notes = "Excluded from matching due to data quality issues"
                 
-                # Create row data
                 row_data = [
-                    # Account Identification
-                    account.get('Id', ''),
-                    account.get('Name', ''),
-                    # Account Metadata
-                    account.get('RecordType', {}).get('Name', ''),
-                    account.get('ParentId', ''),
-                    account.get('Parent', {}).get('Name', '') if account.get('Parent') else '',
-                    account.get('Website', ''),
-                    account.get('BillingState', ''),
-                    account.get('BillingCountry', ''),
-                    account.get('BillingPostalCode', ''),
-                    account.get('ZI_Company_Name__c', ''),
-                    account.get('ZI_Website__c', ''),
-                    account.get('ZI_Company_State__c', ''),
-                    account.get('ZI_Company_Country__c', ''),
-                    account.get('ZI_Company_Postal_Code__c', ''),
-                    account.get('ContactMostFrequentEmail__c', ''),
-                    # Assessment Flags
-                    "❌ True" if account.get('Bad_Domain', {}).get('is_bad', False) else "✅ False",
-                    bad_domain_explanation,
-                    "✅ True" if account.get('Has_Shell', False) else "❌ False",
-                    has_shell_explanation,
-                    f"{account.get('Customer_Consistency', {}).get('score', 0)}/100",
-                    customer_consistency_explanation,
-                    f"{account.get('Customer_Shell_Coherence', {}).get('score', 0)}/100" if account.get('Has_Shell', False) else "N/A",
-                    customer_shell_coherence_explanation,
-                    "✅ True" if account.get('Address_Consistency', {}).get('is_consistent', False) else "❌ False",
-                    address_consistency_explanation,
-                    # AI Assessment
-                    f"{ai_assessment.get('confidence_score', 0)}/100",
-                    ai_analysis
+                    customer.get('Id', ''),
+                    customer.get('Name', ''),
+                    customer.get('Website', ''),
+                    customer_address,
+                    result['status'],
+                    result['reason'],
+                    shell.get('Id', '') if shell else '',
+                    shell.get('ZI_Company_Name__c', '') if shell else '',
+                    shell.get('ZI_Id__c', '') if shell else '',
+                    shell.get('ZI_Website__c', '') if shell else '',
+                    shell_address,
+                    f"{result['match_confidence']:.1f}%" if result['match_confidence'] > 0 else '',
+                    f"{result['website_match']:.1f}%" if result['website_match'] > 0 else '',
+                    f"{result['name_match']:.1f}%" if result['name_match'] > 0 else '',
+                    f"{result['address_consistency']:.1f}/100" if result['address_consistency'] > 0 else '',
+                    f"{ai_assessment.get('confidence_score', 0)}/100" if ai_assessment.get('confidence_score', 0) > 0 else '',
+                    ai_explanation,
+                    result['candidate_count'] if result['candidate_count'] > 0 else '',
+                    processing_notes
                 ]
                 
-                # Add row data
                 for col, value in enumerate(row_data, 1):
-                    cell = ws.cell(row=row_idx, column=col, value=value)
+                    cell = ws_results.cell(row=current_row, column=col, value=value)
                     cell.border = self.border
             
-            # Set frozen panes (Account ID and Name columns)
-            ws.freeze_panes = "C2"
+                    # Apply conditional formatting based on status
+                    if result['status'] == 'MATCHED':
+                        if col == 5:  # Status column
+                            cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")  # Light green
+                        if col in [12, 13, 14, 15, 16]:  # Score columns
+                            cell.alignment = self.center_alignment
+                        else:
+                            cell.alignment = self.wrap_alignment
+                    elif result['status'] == 'UNMATCHED':
+                        if col == 5:  # Status column
+                            cell.fill = PatternFill(start_color="FFE4B5", end_color="FFE4B5", fill_type="solid")  # Light orange
+                        cell.alignment = self.wrap_alignment
+                    else:  # FLAGGED
+                        if col == 5:  # Status column
+                            cell.fill = PatternFill(start_color="FFB6C1", end_color="FFB6C1", fill_type="solid")  # Light red
+                        cell.alignment = self.wrap_alignment
+                
+                current_row += 1
             
             # Auto-adjust column widths
-            for col in range(1, len(headers) + 1):
-                ws.column_dimensions[get_column_letter(col)].width = 20
-            
-            # Create file buffer
-            file_buffer = io.BytesIO()
-            wb.save(file_buffer)
-            file_buffer.seek(0)
-            
-            # Generate filename
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"sfdc_analysis_{export_type}_{timestamp}.xlsx"
-            
-            return {
-                'success': True,
-                'file_buffer': file_buffer,
-                'filename': filename
+            column_widths = {
+                1: 18,   # Customer ID
+                2: 30,   # Customer Name
+                3: 25,   # Customer Website
+                4: 35,   # Customer Address
+                5: 12,   # Match Status
+                6: 40,   # Match Reason
+                7: 18,   # Shell ID
+                8: 30,   # Shell Name
+                9: 18,   # Shell ZI ID
+                10: 25,  # Shell Website
+                11: 35,  # Shell Address
+                12: 15,  # Overall Confidence
+                13: 15,  # Website Match
+                14: 15,  # Name Match
+                15: 15,  # Address Consistency
+                16: 15,  # AI Confidence
+                17: 50,  # AI Explanation
+                18: 12,  # Candidate Count
+                19: 40   # Processing Notes
             }
             
-        except Exception as e:
-            return {
-                'success': False,
-                'error': f"Error creating analysis export: {str(e)}"
-            }
-
-    def create_excel_analysis_export(self, accounts, original_data, excel_info):
-        """Create Excel export for Excel analysis with original data + AI analysis in single table"""
-        try:
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Excel Analysis"
+            for col, width in column_widths.items():
+                column_letter = get_column_letter(col)
+                ws_results.column_dimensions[column_letter].width = width
             
-            # Add title to sheet
+            # Freeze panes to keep headers visible
+            ws_results.freeze_panes = "A2"
+            
+            # Sheet 2: Summary Metrics
+            ws_summary = wb.create_sheet("Summary Metrics")
+            
+            # Add summary title
             current_row = 1
-            title = f"Excel Analysis Results - {excel_info.get('file_name', 'Unknown File')}"
-            ws.merge_cells(f'A{current_row}:Z{current_row}')
-            ws[f'A{current_row}'] = title
-            ws[f'A{current_row}'].font = Font(bold=True, size=16, color="FFFFFF")
-            ws[f'A{current_row}'].alignment = self.center_alignment
-            ws[f'A{current_row}'].fill = PatternFill(start_color="FF7A00", end_color="FF7A00", fill_type="solid")
-            current_row += 1
-            
-            # Add timestamp and file info
-            ws.merge_cells(f'A{current_row}:Z{current_row}')
-            ws[f'A{current_row}'] = f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | File: {excel_info.get('file_name', 'Unknown')} | Sheet: {excel_info.get('sheet_name', 'Unknown')}"
-            ws[f'A{current_row}'].alignment = self.center_alignment
+            ws_summary.merge_cells(f'A{current_row}:B{current_row}')
+            ws_summary[f'A{current_row}'] = "Matching Process Summary"
+            ws_summary[f'A{current_row}'].font = self.title_font
+            ws_summary[f'A{current_row}'].alignment = self.center_alignment
+            ws_summary[f'A{current_row}'].fill = PatternFill(start_color=self.rc_cerulean, end_color=self.rc_cerulean, fill_type="solid")
             current_row += 2
-            
-            # Add Summary Table
-            ws.merge_cells(f'A{current_row}:Z{current_row}')
-            ws[f'A{current_row}'] = "📊 Analysis Summary"
-            ws[f'A{current_row}'].font = Font(bold=True, size=14, color="2C5AA0")
-            ws[f'A{current_row}'].fill = PatternFill(start_color="F1EFEC", end_color="F1EFEC", fill_type="solid")
-            current_row += 1
-            
-            # Summary table headers
-            summary_headers = ["Metric", "Value"]
-            for col, header in enumerate(summary_headers, 1):
-                cell = ws.cell(row=current_row, column=col, value=header)
-                cell.font = self.header_font
-                cell.fill = PatternFill(start_color="0684BC", end_color="0684BC", fill_type="solid")
-                cell.alignment = self.center_alignment
-                cell.border = self.border
-            current_row += 1
             
             # Summary metrics
-            def get_ai_confidence_score(account):
-                ai_assessment = account.get('AI_Assessment', {})
+            if summary:
+                metrics = [
+                    ["Total Customer Accounts Processed", summary.get('total_customer_accounts', 0)],
+                    ["Successfully Matched", summary.get('matched_pairs', 0)],
+                    ["Unable to Match", summary.get('unmatched_customers', 0)],
+                    ["Flagged (Bad Domains)", summary.get('flagged_customer_accounts', 0)],
+                    ["Total Shell Accounts Available", summary.get('total_shell_accounts', 0)],
+                    ["Processing Time", summary.get('execution_time', 'N/A')],
+                    ["Match Success Rate", f"{(summary.get('matched_pairs', 0) / max(summary.get('clean_customer_accounts', 1), 1) * 100):.1f}%" if summary.get('clean_customer_accounts', 0) > 0 else "0%"]
+                ]
                 
-                # Handle case where AI assessment is a string
-                if isinstance(ai_assessment, str):
-                    try:
-                        import json
-                        ai_assessment = json.loads(ai_assessment)
-                    except (json.JSONDecodeError, TypeError):
-                        return 0
-                
-                if isinstance(ai_assessment, dict):
-                    return ai_assessment.get('confidence_score', 0)
-                return 0
-            
-            confidence_scores = [get_ai_confidence_score(acc) for acc in accounts]
-            avg_confidence = round(sum(confidence_scores) / len(accounts), 1) if accounts else 0
-            
-            summary_metrics = [
-                ["Total Excel Rows", len(original_data)],
-                ["Accounts Analyzed", len(accounts)],
-                ["Average AI Confidence Score", avg_confidence],
-                ["High Confidence (>80)", sum(1 for score in confidence_scores if score > 80)],
-                ["Medium Confidence (50-80)", sum(1 for score in confidence_scores if 50 <= score <= 80)],
-                ["Low Confidence (<50)", sum(1 for score in confidence_scores if score < 50)]
-            ]
-            
-            for metric in summary_metrics:
-                ws[f'A{current_row}'] = metric[0]
-                ws[f'B{current_row}'] = metric[1]
-                ws[f'A{current_row}'].font = Font(bold=True)
-                ws[f'A{current_row}'].border = self.border
-                ws[f'B{current_row}'].border = self.border
+                # Add metric headers
+                ws_summary[f'A{current_row}'] = "Metric"
+                ws_summary[f'B{current_row}'] = "Value"
+                ws_summary[f'A{current_row}'].font = self.header_font
+                ws_summary[f'B{current_row}'].font = self.header_font
+                ws_summary[f'A{current_row}'].fill = self.header_fill
+                ws_summary[f'B{current_row}'].fill = self.header_fill
                 current_row += 1
             
-            current_row += 2
-            
-            # Add Analysis Table Header
-            ws.merge_cells(f'A{current_row}:Z{current_row}')
-            ws[f'A{current_row}'] = "📋 Original Data + AI Analysis"
-            ws[f'A{current_row}'].font = Font(bold=True, size=14, color="2C5AA0")
-            ws[f'A{current_row}'].fill = PatternFill(start_color="F1EFEC", end_color="F1EFEC", fill_type="solid")
+                # Add metrics
+                for metric_name, metric_value in metrics:
+                    ws_summary[f'A{current_row}'] = metric_name
+                    ws_summary[f'B{current_row}'] = metric_value
+                    ws_summary[f'A{current_row}'].border = self.border
+                    ws_summary[f'B{current_row}'].border = self.border
             current_row += 1
             
-            # Create mapping of Account IDs to analysis results
-            # FIX: Handle both 15-character and 18-character ID formats for matching
-            # Issue: Excel input contains 15-character IDs, but Salesforce analysis returns 18-character IDs
-            # Solution: Store both formats in the mapping to enable proper matching
-            account_analysis_map = {}
-            for acc in accounts:
-                account_id = acc.get('Id', '')
-                if account_id:
-                    # Store with the 18-character ID (from analysis results)
-                    account_analysis_map[account_id] = acc
-                    # Also store with the 15-character ID for matching with original Excel data
-                    if len(account_id) == 18:
-                        account_analysis_map[account_id[:15]] = acc
-                    elif len(account_id) == 15:
-                        # If we have a 15-character ID, also store the 18-character version
-                        account_analysis_map[self._convert_15_to_18_char_id(account_id)] = acc
+            # Auto-adjust summary column widths
+            ws_summary.column_dimensions['A'].width = 35
+            ws_summary.column_dimensions['B'].width = 20
             
-            # Get original headers and add AI analysis columns
-            if original_data:
-                # Filter out any analysis-related fields from original data
-                analysis_fields = {'AI_Assessment', 'Has_Shell', 'Customer_Consistency', 'Customer_Shell_Coherence', 'Address_Consistency', 'Shell_Account_Data'}
-                original_headers = [header for header in original_data[0].keys() if header not in analysis_fields]
-                ai_headers = ["AI Confidence Score", "AI Analysis"]
-                all_headers = original_headers + ai_headers
-                
-                # Add headers
-                for col, header in enumerate(all_headers, 1):
-                    cell = ws.cell(row=current_row, column=col, value=header)
-                    cell.font = self.header_font
-                    if header in ai_headers:
-                        cell.fill = PatternFill(start_color="00A3E0", end_color="00A3E0", fill_type="solid")
-                    else:
-                        cell.fill = PatternFill(start_color="0684BC", end_color="0684BC", fill_type="solid")
-                    cell.alignment = self.center_alignment
-                    cell.border = self.border
-                current_row += 1
-                
-                # Add data rows
-                for row_idx, row_data in enumerate(original_data, current_row):
-                    # Get original data (filtered to exclude analysis fields)
-                    row_values = []
-                    for header in original_headers:
-                        value = row_data.get(header, '')
-                        
-                        # Handle RecordType field - extract Name from dictionary
-                        if header == 'RecordType' and isinstance(value, dict):
-                            value = value.get('Name', 'N/A')
-                        # Handle any other dictionary values
-                        elif isinstance(value, dict):
-                            value = str(value)  # Convert to string representation
-                        
-                        row_values.append(value)
-                    
-                    # Get AI analysis for this account
-                    # FIX: Handle different column names for account IDs in original Excel data
-                    # Issue: Original Excel data may have account IDs in user-selected column, not 'Id'
-                    # Solution: Try multiple approaches to find the account ID
-                    account_id = row_data.get('Id', '')
-                    
-                    # If 'Id' is not found, try to find the account ID column from excel_info
-                    if not account_id and excel_info and 'account_id_column' in excel_info:
-                        account_id_column = excel_info['account_id_column']
-                        account_id = row_data.get(account_id_column, '')
-                    
-                    # If still no account_id found, try to find any field that looks like an account ID
-                    if not account_id:
-                        for key, value in row_data.items():
-                            if isinstance(value, str) and len(value) in [15, 18] and value.startswith('001'):
-                                account_id = value
-                                break
-                    
-                    account_analysis = account_analysis_map.get(account_id, {})
-                    
-                    # If no match found, try to find by converting the ID
-                    if not account_analysis and account_id:
-                        if len(account_id) == 15:
-                            # Try with 18-character version
-                            converted_id = self._convert_15_to_18_char_id(account_id)
-                            account_analysis = account_analysis_map.get(converted_id, {})
-                        elif len(account_id) == 18:
-                            # Try with 15-character version
-                            account_analysis = account_analysis_map.get(account_id[:15], {})
-                    
-                    ai_assessment = account_analysis.get('AI_Assessment', {})
-                    
-                    # Handle AI assessment data safely - check if it's a string that needs parsing
-                    if isinstance(ai_assessment, str):
-                        try:
-                            import json
-                            ai_assessment = json.loads(ai_assessment)
-                        except (json.JSONDecodeError, TypeError):
-                            ai_assessment = {}
-                    
-                    confidence_score = ai_assessment.get('confidence_score', 0) if isinstance(ai_assessment, dict) else 0
-                    explanation_bullets = ai_assessment.get('explanation_bullets', []) if isinstance(ai_assessment, dict) else []
-                    
-                    ai_values = [
-                        f"{confidence_score}/100",
-                        "\n".join([f"• {bullet}" for bullet in explanation_bullets]) if explanation_bullets else "No AI analysis available"
-                    ]
-                    
-                    # Combine original and AI data
-                    all_values = row_values + ai_values
-                    
-                    for col, value in enumerate(all_values, 1):
-                        cell = ws.cell(row=row_idx, column=col, value=value)
-                        cell.border = self.border
-                
-                # No frozen panes for Excel input export
-                
-                # Auto-adjust column widths
-                for col in range(1, len(all_headers) + 1):
-                    ws.column_dimensions[get_column_letter(col)].width = 20
-            
-            # Create file buffer
-            file_buffer = io.BytesIO()
-            wb.save(file_buffer)
-            file_buffer.seek(0)
+            # Save to buffer
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
             
             # Generate filename
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"excel_analysis_{timestamp}.xlsx"
+            filename = f"customer_shell_matching_results_{timestamp}.xlsx"
             
             return {
                 'success': True,
-                'file_buffer': file_buffer,
+                'file_buffer': buffer,
                 'filename': filename
             }
             
         except Exception as e:
             return {
                 'success': False,
-                'error': f"Error creating Excel analysis export: {str(e)}"
+                'error': f"Error creating matching results export: {str(e)}"
             } 

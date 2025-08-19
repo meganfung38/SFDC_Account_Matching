@@ -3,104 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account to Shell Account Assessment API - UI</title>
+    <title>Customer-to-Shell Account Matching System</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/ringcentral-theme.css') }}">
 </head>
 <body>
     <div class="container">
+        <!-- Header Banner -->
         <div class="intro-banner">
-            <h2>🏢 Account to Shell Account Assessment API</h2>
+            <h2>🎯 Customer-to-Shell Account Matching System</h2>
             <p style="font-size: 18px; margin: 0;">
-                <strong>Assess account to shell account relationships in Salesforce using AI-powered analysis.</strong>
+                <strong>Intelligently match customer accounts to their most suitable parent shell accounts using AI-powered analysis.</strong>
             </p>
             <p>
-                Identify account relationships, potential shell accounts, and get actionable insights to improve your account hierarchy.
+                Upload two Excel files: one with customer account IDs and another with shell account IDs. 
+                Our system will find the best matches using advanced algorithms and provide confidence scoring.
             </p>
         </div>
-        
-        <!-- SOQL Query Analysis Endpoint -->
-        <div class="endpoint">
-            <h2><span class="method-badge post">POST</span>/accounts/analyze-query</h2>
-            <div class="endpoint-description">
-                Validate SOQL queries and retrieve Account IDs for analysis. Enter complete SOQL queries that return Account IDs only.
+
+        <!-- Progress Indicator -->
+        <div class="progress-steps">
+            <div class="step active" id="step1-indicator">
+                <span class="step-number">1</span>
+                <span class="step-title">Customer Accounts</span>
             </div>
-            
-            <form id="queryForm">
-                <label for="soqlQuery">SOQL Query - Must be complete query returning Account IDs:</label>
-                <textarea id="soqlQuery" placeholder="⚠️ IMPORTANT: Must be a complete SOQL query!&#10;&#10;Valid examples:&#10;• SELECT Id FROM Account WHERE Industry = 'Technology'&#10;• SELECT Id FROM Account WHERE Name LIKE '%Inc%' LIMIT 50&#10;• SELECT Account.Id FROM Account JOIN Contact ON...&#10;• SELECT Id FROM Account WHERE... UNION SELECT Id FROM Account WHERE...&#10;&#10;✅ Complete SELECT queries only&#10;❌ Cannot use WHERE/LIMIT clauses alone&#10;❌ Cannot leave blank"></textarea>
-                
-                <div class="form-row">
-                    <div>
-                        <label for="maxAnalyze">Max Account IDs to Return (1-500, or leave blank for all):</label>
-                        <input type="text" id="maxAnalyze" value="10" placeholder="Leave blank for all results">
-                    </div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button type="submit" id="analyzeBtn">Validate Account IDs</button>
-                    <button type="button" id="getAccountDataBtn" disabled>Analyze Accounts</button>
-                    <button type="button" id="exportBtn" disabled class="export-btn">📊 Export to Excel</button>
-                </div>
-            </form>
-            
-            <div id="queryResponse" class="response" style="display: none;"></div>
-        </div>
-        
-        <!-- Account Data Endpoint -->
-        <div class="endpoint">
-            <h2><span class="method-badge get">GET</span>/account/{id}</h2>
-            <div class="endpoint-description">
-                Analyze a single account to understand its structure and characteristics.
+            <div class="step" id="step2-indicator">
+                <span class="step-number">2</span>
+                <span class="step-title">Shell Accounts</span>
             </div>
-            
-            <form id="accountForm">
-                <label for="accountId">Salesforce Account ID:</label>
-                <input type="text" id="accountId" placeholder="0015e00000ABC123" maxlength="18">
-                
-                <div style="display: flex; gap: 10px;">
-                    <button type="submit">Analyze Account</button>
-                    <button type="button" id="exportAccountBtn" disabled class="export-btn">📊 Export to Excel</button>
-                </div>
-            </form>
-            
-            <div id="accountResponse" class="response" style="display: none;"></div>
+            <div class="step" id="step3-indicator">
+                <span class="step-number">3</span>
+                <span class="step-title">Process Matching</span>
+            </div>
+            <div class="step" id="step4-indicator">
+                <span class="step-number">4</span>
+                <span class="step-title">Results & Export</span>
+            </div>
         </div>
 
-        <!-- Excel Upload Analysis Endpoint -->
-        <div class="endpoint">
-            <h2><span class="method-badge post">POST</span>/excel/validate-account-ids</h2>
+        <!-- Step 1: Customer Accounts Upload -->
+        <div class="endpoint" id="step1-section">
+            <h2><span class="method-badge post">STEP 1</span>Upload Customer Account IDs</h2>
             <div class="endpoint-description">
-                Upload an Excel file containing Account IDs for validation and potential future analysis. The system will validate all Account IDs to ensure they exist in Salesforce and are valid Account object records.
+                Upload an Excel file containing customer account IDs that need to be matched to shell accounts.
             </div>
             
-            <form id="excelForm" enctype="multipart/form-data">
+            <form id="customerForm" enctype="multipart/form-data">
                 <div class="excel-upload-section">
-                    <label for="excelFile">Excel File (.xlsx or .xls):</label>
-                    <input type="file" id="excelFile" accept=".xlsx,.xls" required>
-                    <button type="button" id="parseExcelBtn" disabled>1. Parse File</button>
+                    <label for="customerFile">Customer Accounts Excel File (.xlsx or .xls):</label>
+                    <input type="file" id="customerFile" accept=".xlsx,.xls" required>
+                    <button type="button" id="parseCustomerBtn" disabled>Parse Customer File</button>
                 </div>
                 
-                <div id="excelConfig" class="excel-config" style="display: none;">
+                <div id="customerConfig" class="excel-config" style="display: none;">
                     <div class="form-row">
                         <div>
-                            <label for="sheetSelect">Sheet:</label>
-                            <select id="sheetSelect"></select>
+                            <label for="customerSheetSelect">Sheet:</label>
+                            <select id="customerSheetSelect"></select>
                         </div>
                         <div>
-                            <label for="accountIdColumn">Account ID Column:</label>
-                            <select id="accountIdColumn"></select>
+                            <label for="customerAccountIdColumn">Account ID Column:</label>
+                            <select id="customerAccountIdColumn"></select>
                         </div>
                     </div>
                     
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button type="button" id="validateAccountIdsBtn" disabled>2. Validate Account IDs</button>
-                        <button type="button" id="analyzeExcelBtn" disabled>3. Analyze Accounts</button>
-                        <button type="button" id="exportExcelBtn" disabled class="export-btn">📊 Export to Excel</button>
+                        <button type="button" id="validateCustomerBtn" disabled>Validate Customer Account IDs</button>
                     </div>
                 </div>
             </form>
             
-            <div id="excelResponse" class="response" style="display: none;"></div>
+            <div id="customerResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Step 2: Shell Accounts Upload -->
+        <div class="endpoint disabled-section" id="step2-section">
+            <h2><span class="method-badge post">STEP 2</span>Upload Shell Account IDs</h2>
+            <div class="endpoint-description">
+                Upload an Excel file containing shell account IDs that will serve as potential parent accounts.
+            </div>
+            
+            <form id="shellForm" enctype="multipart/form-data">
+                <div class="excel-upload-section">
+                    <label for="shellFile">Shell Accounts Excel File (.xlsx or .xls):</label>
+                    <input type="file" id="shellFile" accept=".xlsx,.xls" disabled>
+                    <button type="button" id="parseShellBtn" disabled>Parse Shell File</button>
+                </div>
+                
+                <div id="shellConfig" class="excel-config" style="display: none;">
+                    <div class="form-row">
+                        <div>
+                            <label for="shellSheetSelect">Sheet:</label>
+                            <select id="shellSheetSelect"></select>
+                        </div>
+                        <div>
+                            <label for="shellAccountIdColumn">Account ID Column:</label>
+                            <select id="shellAccountIdColumn"></select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" id="validateShellBtn" disabled>Validate Shell Account IDs</button>
+                    </div>
+                </div>
+            </form>
+            
+            <div id="shellResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Step 3: Process Matching -->
+        <div class="endpoint disabled-section" id="step3-section">
+            <h2><span class="method-badge post">STEP 3</span>Process Account Matching</h2>
+            <div class="endpoint-description">
+                Run the intelligent matching algorithm to find the best shell account for each customer account.
+                This process includes fuzzy matching, AI confidence scoring, and detailed explanations.
+            </div>
+            
+            <div class="matching-summary" id="matchingSummary" style="display: none;">
+                <div class="summary-cards">
+                    <div class="summary-card">
+                        <div class="summary-number" id="customerCount">0</div>
+                        <div class="summary-label">Customer Accounts</div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-number" id="shellCount">0</div>
+                        <div class="summary-label">Shell Accounts</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="processMatchingBtn" disabled class="primary-btn">
+                    🎯 Start Matching Process
+                </button>
+                <div id="matchingProgress" class="progress-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>Processing matches...</span>
+                </div>
+            </div>
+            
+            <div id="matchingResponse" class="response" style="display: none;"></div>
+        </div>
+
+        <!-- Step 4: Results & Export -->
+        <div class="endpoint disabled-section" id="step4-section">
+            <h2><span class="method-badge get">STEP 4</span>Matching Results & Export</h2>
+            <div class="endpoint-description">
+                View detailed matching results and export to Excel for further analysis.
+            </div>
+            
+            <div class="results-summary" id="resultsSummary" style="display: none;">
+                <div class="summary-cards">
+                    <div class="summary-card success">
+                        <div class="summary-number" id="matchedCount">0</div>
+                        <div class="summary-label">Successfully Matched</div>
+                    </div>
+                    <div class="summary-card warning">
+                        <div class="summary-number" id="unmatchedCount">0</div>
+                        <div class="summary-label">Unmatched</div>
+                    </div>
+                    <div class="summary-card error">
+                        <div class="summary-number" id="flaggedCount">0</div>
+                        <div class="summary-label">Flagged (Bad Domains)</div>
+                    </div>
+                    <div class="summary-card" style="background-color: #f5f5f5; border: 1px solid #dee2e6;">
+                        <div class="summary-number" id="invalidCount">0</div>
+                        <div class="summary-label">Invalid Account IDs</div>
+                    </div>
+                    <div class="summary-card info">
+                        <div class="summary-number" id="successRate">0%</div>
+                        <div class="summary-label">Success Rate</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" id="viewResultsBtn" disabled class="secondary-btn">
+                    📋 View Detailed Results
+                </button>
+                <button type="button" id="exportResultsBtn" disabled class="export-btn">
+                    📊 Export to Excel
+                </button>
+                <button type="button" id="resetProcessBtn" class="reset-btn" style="display: none;">
+                    🔄 Start New Matching Process
+                </button>
+            </div>
+            
+            <div id="resultsResponse" class="response" style="display: none;"></div>
+            
+            <!-- Detailed Results Table -->
+            <div id="detailedResults" class="detailed-results" style="display: none;">
+                <h3>Detailed Match Results</h3>
+                <div class="table-container">
+                    <table id="resultsTable" class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Customer</th>
+                                <th>Status</th>
+                                <th>Recommended Shell</th>
+                                <th>Confidence</th>
+                                <th>Explanation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="globalStatus" class="global-status" style="display: none;">
+            <div class="status-content">
+                <span class="status-icon">ℹ️</span>
+                <span class="status-message">Ready to start matching process</span>
+            </div>
         </div>
     </div>
 

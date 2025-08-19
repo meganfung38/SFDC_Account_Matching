@@ -12,78 +12,91 @@
 
 ### **Problem Statement**
 
-* Shell accounts are designed to unify customer-level records under one corporate identity. However, inconsistencies in data and incorrect associations have led to misaligned parent-child relationships within SFDC. This introduces:   
-  * Poor data hygiene   
-  * Misleading sales attribution   
-  * Fragmented customer insights   
-  * Operational inefficiencies
-
+* Many customer accounts are not currently assigned to a shell account, even though they should be. This gap prevents us from fully unifying customer level records under their parent corporate identity. As a result, the organization lacks complete strategic visibility into corporate relationships and risks degraded data quality in Salesforce. 
 
 ### **Solution**
 
-* Build an automated system to evaluate the validity of SFDC account-to-shell-account relationships using field comparison and pattern analysis.   
-  * Inputs:   
-    * list of SFDC account IDs (via SOQL query or excel upload)   
-    * Single SFDC account ID   
-    * Single SFDC shell account ID (to trigger batch evaluation of its child accounts)  
-  * Output:   
-    * Confidence scoring (%) for each account-shell pairing that reflects the likelihood of a correct match   
-    * An explanation detailing why the score was assigned  
-    * Flags and metadata indicators for further review
+* Build an automated system that, given two Excel inputs:   
+  * A list of customer accounts (to be parent-ed)  
+  * A list of ZI shell accounts (authorized shell universe)
 
-    
+  Finds the best parent shell for each customer and produces: 
 
+  * A best match recommendation (best shell candidate– Id \+ Name)   
+  * AI Confidence score (0-100)  
+  * AI plain language explanation (which fields matched, which rules fired, why the score was assigned)   
+  * Transparent rationale and flags to speed up human review  
 * Steps:    
 1. Salesforce Data Extraction  
-* Shell and Customer Account data: 
+* Customer Account data (non ZI fields):  
 
 | Field  | Description | API Name |
 | :---- | :---- | :---- |
 | *Id*  | 18 Character SFDC Id | Id |
 | *Account Name*  | Company/ Organization/ Personal Name | Name |
-| *Parent Account ID*  | 18 Character SFDC Id | ParentId |
-| *Parent Account Name*  | Shell Account Company/ Organization | Parent.Name |
 | *Website*  | Associated Website | Website |
-| *Contact Most Frequent Email*  | Associated Email | ContactMostFrequentEmail__c |
-| *Billing Address*  | Location  | BillingState, BillingCountry, BillingPostalCode |
-| *ZI Company Name*  | ZoomInfo Enriched Company Name | ZI\_Company\_Name\_\_c |
-| *ZI Website* | ZoomInfo Enriched Company Name | ZI\_Website\_\_c  |
-| *ZI Billing Address*  | Location  | ZI_Company_State, ZI_Company_Country__c, ZI_Company_Postal_Code__c |
+| *Billing Address*  | Location  |  BillingCity, BillingState, BillingCountry, BillingPostalCode |
+
+* Shell Account data (ZI fields only): 
+
+| Field  | Description | API Name |
+| :---- | :---- | :---- |
+| *Id*  | 18 Character SFDC Id | Id |
+| *ZI ID* | 9 Digit ZI Id  | ZI\_Id\_\_c |
+| *ZI Account Name*  | ZoomInfo Enriched Company/ Organization/ Personal Name | ZI\_Company\_Name\_\_c |
+| *ZI Website* | ZoomInfo Enriched Associated Website | ZI\_Website\_\_c  |
+| *ZI Billing Address*  | ZoomInfo Enriched Location  | ZI\_Company\_City\_\_c, ZI\_Company\_State\_\_c, ZI\_Company\_Country\_\_c, ZI\_Company\_Postal\_Code\_\_c |
 
 * Flags: 
 
 | Flags  | Data Type | Meaning  |
 | :---- | :---- | :---- |
-| Bad\_Domain  | Boolean (True/ False) | Whether ContactMostFrequentEmail__c or Website has a bad domain. If TRUE, skip further analysis. |
-| Has\_Shell  | Boolean (True/ False) | Whether ParentId is null or points to itself |
-| Customer\_Consistency   | Fuzzy Match Score (0-100) | Whether the account name and website align |
-| Customer\_Shell\_Coherence  | Fuzzy Match Score (0-100) | Whether the customer account metadata aligns with its shell's metadata (name and website) ONLY compute if Has\_Shell is TRUE |
-| Address\_Consistency | Boolean (True/ False) | Whether the customer billing address and shell ZI billing address match ONLY compute if Has\_Shell is TRUE |
+| Bad\_Domain  | Boolean (True/ False) | Whether the website has a bad domain. If TRUE, skip further analysis.  |
 
-3. Bad Domains 
-* Accounts flagged with Bad_Domain indicate that the account uses a free or invalid email/ website domain. These accounts will be excluded from further analysis. 
- 
-2. Confidence Score Generation  
+2. Bad Domains  
+* Accounts flagged with Bad\_Domain indicate that the account uses a free or invalid website domain. These accounts will be excluded from further analysis.  
+3. Matching Algorithm  
+* Build comparable representations for input customer and shell records:   
+  * Name tokens (normalized, de-noised, legal suffix handling)   
+  * Website/ domain (registered domain; handle redirects/ aliases if known)   
+  * Geo signals (city/ state/ country/ postal as categorical or proximity)   
+* Data precedence:   
+  * Website \> Account Name for entity identity   
+  * If website and name conflict, website wins  
+  * If website is null, fall back to exact/ near name match (to ZI name)   
+  * If both website and name null, use address signals (city/ state/ country/ postal)   
+* For each customer account, compute similarity against all shell accounts using:   
+  * Cosine similarity/ distance   
+  * K-nearest neighbors (kNN)  
+  * Two stage retrieval:   
+    * Fast filter by website/ name hash buckets   
+    * Re-rank with richer similarity   
+* Scoring signals: 
+
+| Signal  | Data Type  | Meaning |
+| :---- | :---- | :---- |
+| Website\_Match  | Fuzzy Match Score (0-100)  | How similar the customer and shell account websites are |
+| Name\_Match | Fuzzy Match Score (0-100) | How similar the customer and shell account names are |
+| Address\_Consistency  | Score (0-100)  | Country match (+30)  State match (+30)  City match (+30)  Postal code match (+10)  |
+
+4. Confidence Score Generation  
 * Design a hybrid model that uses fuzzy logic, contextual analysis, and LLM prompts to evaluate the validity of each account-to-shell relationship  
-  * **Flag verification**: Leverage Customer\_Consistency and Customer\_Shell\_Coherence similarity scores as signals   
-1. **Customer Metadata Coherence**: evaluate whether the account’s website and name logically belong together (use Customer\_Consistency score)   
-   * Does the account’s website and billing address belong to the claimed account name?   
-2. **Customer to Shell Coherence (only if Has\_Shell is TRUE)**: Compare account name and website to those its parent shell (use Customer\_Shell\_Coherence score)  
+  * **Signal verification**: Leverage Website\_Match, Name\_Match, and Address\_Consistency similarity scores as signals   
+1. **Customer to Shell Coherence**: Compare account name and website to those of its parent shell (use Website\_Match and Name\_Match scores)  
    * **External sourcing**: using external data sources (e.g., ZoomInfo, public directories), determine if the customer account is:   
      * A known local branch, regional office, individual, department, or subsidiary of the shell  
        * What does the Customer\_Shell\_Coherence score say about the relationship between the customer account and its parent shell account?   
        * Do external sources agree that the customer account has some corporate relationship to its parent shell account?	  
      * **Address Consistency**: evaluate billing address alignment and interpret address coherence based on regional vs global presence (use Address\_Consistency)   
-3. **Weighting Scoring**: assign tunable weights to each factor  
-   * **Customer Metadata Coherence**: does the account data seem independently valid?   
-     * **Customer to Shell Account Coherence**: does the relationship with the parent shell account make sense?   
+2. **Weighting Scoring**: assign tunable weights to each factor  
+   * **Customer to Shell Account Coherence**: does the relationship with the parent shell account make sense?   
      * **Address Consistency**: do the locations suggest a valid relationship?   
-4. **Edge Case**: use AI to normalize noisy names, determine domain affliction, evaluate overall relationship coherence across fields  
-5. **Output:** a confidence score (%) indicating the likelihood of a correct account-to-shell match
+3. **Edge Case**: use AI to normalize noisy names, determine domain affliction, evaluate overall relationship coherence across fields  
+4. **Output:** a confidence score (%) indicating the likelihood of a correct account-to-shell match
 
    
 
-3. Explainability   
+5. Explainability   
 * Plain language rationale describing:  
   * Which fields matched or diverged  
   * How strong alignment was (without showing internal calculations)  

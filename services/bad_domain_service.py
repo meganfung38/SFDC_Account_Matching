@@ -3,6 +3,7 @@ import os
 import re
 from urllib.parse import urlparse
 from typing import Tuple, Set
+from config.config import BAD_EMAIL_DOMAINS
 
 class BadDomainService:
     """
@@ -10,12 +11,13 @@ class BadDomainService:
     """
     
     def __init__(self):
-        """Initialize the service and load bad domains from CSV"""
-        self.bad_domains = self._load_bad_domains()
+        """Initialize the service with bad domains from config"""
+        self.bad_domains = BAD_EMAIL_DOMAINS
+        print(f"✅ Loaded {len(self.bad_domains)} bad domains from config")
     
     def _load_bad_domains(self) -> Set[str]:
         """
-        Load bad domains from CSV file into a set for fast lookup
+        DEPRECATED: Load bad domains from CSV file into a set for fast lookup
         Returns set of lowercase domain names
         """
         bad_domains = set()

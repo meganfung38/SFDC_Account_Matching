@@ -1,0 +1,4 @@
+- Website priority over Account Name
+- If website and account name are conflicting -> website takes priority
+- If website is null, use account name -> exact match with ZoomInfo
+- If both account name and website are null -> use address in identifying business identity

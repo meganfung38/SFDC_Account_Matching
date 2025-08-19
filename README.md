@@ -1,306 +1,535 @@
-# SFDC Account to Shell Account Relationship Assessment
+# 🎯 Customer-to-Shell Account Matching System
 
-## 🎯 **Project Overview**
+An intelligent AI-powered system that matches customer accounts to their most suitable parent shell accounts in Salesforce. Upload two Excel files and get comprehensive matching results with confidence scoring and detailed explanations.
 
-This project provides an automated system to evaluate the validity of Salesforce account-to-shell-account relationships using field comparison, pattern analysis, and AI-powered confidence scoring. The goal is to identify misaligned parent-child relationships that cause poor data hygiene, misleading sales attribution, and operational inefficiencies.
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-### **Account Hierarchy Background**
-RingCentral's Salesforce system uses a structured hierarchy:
-- **Shell Accounts** (RecordType: "ZI Customer Shell Account"): ZoomInfo-enriched master entities representing business identities
-- **Customer Accounts** (RecordType: "Customer Account"): Individual or departmental accounts that should roll up to appropriate shell accounts
+## 📋 Table of Contents
 
-### **Problem Statement**
-Inconsistencies in data and incorrect associations have led to misaligned parent-child relationships, introducing:
-- Poor data hygiene
-- Misleading sales attribution  
-- Fragmented customer insights
-- Operational inefficiencies
+- [Overview](#overview)
+- [Features](#features)
+- [System Architecture](#system-architecture)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [API Documentation](#api-documentation)
+- [Data Fields](#data-fields)
+- [Matching Algorithm](#matching-algorithm)
+- [Excel Export Format](#excel-export-format)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
----
+## 🎯 Overview
 
-## 🚀 **Current Implementation Status**
+The Customer-to-Shell Account Matching System revolutionizes how organizations manage their account hierarchies in Salesforce. Instead of manual relationship assessment, this system uses advanced fuzzy matching algorithms and AI-powered analysis to intelligently match customer accounts to their optimal parent shell accounts.
 
-### ✅ **FULLY IMPLEMENTED: Complete Assessment System**
+### Key Capabilities
 
-The system is **fully functional** with all core features implemented and operational:
+- **Dual-File Processing**: Upload customer and shell account Excel files
+- **Intelligent Matching**: Advanced two-stage retrieval algorithm with fuzzy matching
+- **AI-Powered Scoring**: OpenAI integration for confidence assessment and explanations
+- **Data Quality Filtering**: Automatic bad domain detection and exclusion
+- **Invalid ID Handling**: Graceful processing with invalid IDs excluded but tracked
+- **Comprehensive Results**: One row per customer with complete metadata and match details
+- **Professional Export**: Multi-worksheet Excel reports with summary metrics ([view sample](https://docs.google.com/spreadsheets/d/1eXpxC7F79lLkkgTNtVCuXvzZSCkGwSzF/edit?usp=sharing&ouid=113726783832302437979&rtpof=true&sd=true))
 
-#### **🎯 Core Assessment Features**
-- **✅ Relationship Assessment Flags**: All 5 assessment flags implemented and computed
-  - `Bad_Domain`: Boolean flag for filtering accounts with consumer/test email domains and websites
-  - `Has_Shell`: Boolean flag indicating if account has a parent shell
-  - `Customer_Consistency`: Fuzzy match score (0-100) for name/website alignment
-  - `Customer_Shell_Coherence`: Fuzzy match score (0-100) for customer-shell metadata alignment
-  - `Address_Consistency`: Boolean flag for billing address matching
-- **✅ AI-Powered Confidence Scoring**: OpenAI GPT-4o integration with comprehensive system prompt
-- **✅ Explainability**: Detailed AI-generated explanations with confidence scores and reasoning bullets
-- **✅ Data Quality Filtering**: Automatic detection and filtering of bad domains to prevent analysis of low-quality accounts
+## ✨ Features
 
-#### **🌐 Web Interface & API Endpoints**
-- **✅ Full-featured web UI** at `/` with three input methods:
-  - **SOQL Query Analysis**: Validate queries and analyze returned accounts
-  - **Single Account Analysis**: Direct account ID lookup and assessment
-  - **Excel Upload Processing**: Batch processing with validation and analysis
-- **✅ RESTful API** with comprehensive endpoints for all functionality
-- **✅ Real-time validation** and error handling across all workflows
+### 🚀 Core Functionality
 
-#### **📊 Account Data Retrieval (13 Fields)**
-The system queries these fields for comprehensive account analysis:
+- **Step-by-Step Workflow**: Intuitive 4-step process with visual progress indicators
+- **Real-Time Validation**: Salesforce ID validation with immediate feedback on invalid IDs
+- **Smart Filtering**: Automatic exclusion of accounts with bad domains (Gmail, Yahoo, etc.)
+- **Fuzzy Matching**: Website, name, and address similarity scoring
+- **AI Integration**: Confidence scoring and plain-language explanations
+- **Batch Processing**: Handle hundreds of accounts efficiently
 
-**Standard Fields:**
-- `Id` - Account's unique Salesforce ID
-- `Name` - Account name
-- `Website` - Account's website URL
-- `RecordType.Name` - Account type (Shell vs Customer)
+### 🎨 User Experience
 
-**Contact Information:**
-- `ContactMostFrequentEmail__c` - Most frequently used contact email
+- **Modern UI**: Beautiful RingCentral-themed interface
+- **Responsive Design**: Works on desktop, tablet, and mobile
+- **Progress Tracking**: Real-time status updates and progress indicators
+- **Error Handling**: Clear, actionable error messages
+- **Global Notifications**: Auto-hiding status messages
 
-**Address Fields:**
-- `BillingState`, `BillingCountry`, `BillingPostalCode` - Billing address components
-- `ZI_Company_State__c`, `ZI_Company_Country__c`, `ZI_Company_Postal_Code__c` - ZoomInfo address data
+### 📊 Data & Export
 
-**ZoomInfo Enriched Fields:**
-- `ZI_Company_Name__c`, `ZI_Website__c` - Enriched company data
+- **Flexible Input**: Any Excel file format with user-specified columns (handles invalid IDs gracefully)
+- **Complete Metadata**: Full customer and shell account information
+- **Multi-Sheet Export**: Organized results with summary metrics
+- **Status Tracking**: MATCHED/UNMATCHED/FLAGGED/INVALID classifications
+- **Confidence Metrics**: Multiple scoring dimensions with explanations
 
-**Parent Relationship Fields:**
-- `ParentId` - Parent account ID via relationship
-- `Parent.Name` - Parent account name via relationship
+## 🏗️ System Architecture
 
-#### **🤖 AI Assessment System**
-- **✅ OpenAI GPT-4o Integration**: Advanced AI-powered relationship validation
-- **✅ External Knowledge Application**: AI leverages real-world corporate knowledge
-- **✅ Comprehensive System Prompt**: Detailed instructions for consistent assessment
-- **✅ Confidence Scoring**: 0-100 confidence scores with detailed explanations
-- **✅ Error Handling**: Robust fallback when AI service is unavailable
-
-#### **📁 Excel Processing & Export**
-- **✅ Multi-step Workflow**: Parse → Validate → Analyze
-- **✅ File Validation**: Sheet and column selection with real-time feedback
-- **✅ Account ID Validation**: Pre-analysis validation to prevent errors
-- **✅ Batch Processing**: Handle multiple accounts efficiently
-- **✅ Excel Export**: Three export types with RingCentral theming
-  - **SOQL/Single Account**: Full analysis with metadata, flags, and AI assessment
-  - **Excel Input**: Original data + AI confidence score and explanation
-  - **Summary Tables**: Processing statistics and confidence metrics
-
-#### **🔧 Technical Infrastructure**
-- **✅ Salesforce Integration**: Full API integration with connection management
-- **✅ Fuzzy Matching Service**: Custom service for string similarity and domain analysis
-- **✅ Error Handling**: Comprehensive error management and user feedback
-- **✅ Performance Optimization**: Connection reuse and batch processing
-
----
-
-## 🏗️ **Technical Architecture**
-
-### **Core Technologies**
-- **Backend**: Python Flask API
-- **Data Layer**: Salesforce API integration via simple-salesforce
-- **AI**: OpenAI GPT-4o integration
-- **Frontend**: Responsive web interface with HTML/CSS/JavaScript
-- **Data Processing**: pandas, openpyxl for Excel handling
-- **Fuzzy Matching**: Custom service with domain extraction and name normalization
-
-### **Service Layer Architecture**
 ```
-services/
-├── salesforce_service.py   # SOQL queries, account data retrieval, flag computation
-├── openai_service.py       # AI prompt management and completion
-├── excel_service.py        # File processing and validation
-├── fuzzy_matching_service.py # String similarity and domain analysis
-├── bad_domain_service.py   # Bad domain detection and filtering
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Frontend UI   │    │   Flask API      │    │   Salesforce    │
+│                 │◄──►│                  │◄──►│      API        │
+│ • Step-by-step  │    │ • Route handlers │    │ • Account data  │
+│ • File uploads  │    │ • Validation     │    │ • ID validation │
+│ • Results view  │    │ • Processing     │    │ • Field queries │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │
+                       ┌────────┴────────┐
+                       │                 │
+            ┌──────────▼─────────┐    ┌──▼─────────────┐
+            │   Core Services    │    │   OpenAI API   │
+            │                    │    │                │
+            │ • Fuzzy Matching   │    │ • Confidence   │
+            │ • Excel Processing │    │ • Explanations │
+            │ • Bad Domains      │    │ • Assessment   │
+            └────────────────────┘    └────────────────┘
 ```
 
-### **Key Components**
+### Core Services
 
-#### **Flag Computation Engine**
-- **Bad_Domain**: Detects consumer/test domains in email and website fields with intelligent pattern matching
-- **Has_Shell**: Validates parent account relationships using `ParentId` field
-- **Customer_Consistency**: Fuzzy matching between account name and website/ZI data
-- **Customer_Shell_Coherence**: Multi-dimensional comparison with detailed field-level explanations
-- **Address_Consistency**: Intelligent address comparison using field precedence (Customer Billing vs Parent ZI, with fallbacks)
+1. **SalesforceService**: Data extraction, validation, filtering
+2. **FuzzyMatchingService**: Two-stage matching algorithm
+3. **OpenAI_Service**: AI confidence scoring and explanations
+4. **ExcelService**: File parsing and export generation
+5. **BadDomainService**: Domain quality filtering
 
-#### **AI Assessment System**
-- **System Prompt**: Comprehensive instructions for relationship validation
-- **External Knowledge**: Leverages AI's understanding of corporate structures
-- **Confidence Scoring**: 0-100 scores with detailed reasoning
-- **Error Resilience**: Graceful fallback when AI service unavailable
+## 📋 Prerequisites
 
-#### **Web Interface**
-- **Collapsible Output**: Organized display with toggleable sections
-- **Real-time Validation**: Immediate feedback on inputs and errors
-- **Consistent Formatting**: Unified output format across all workflows
-- **Export Ready**: Infrastructure for future Excel export functionality
+- **Python 3.8+**
+- **Salesforce Account** with API access
+- **OpenAI API Key** for AI-powered analysis
+- **Excel Files** with customer and shell account IDs
 
----
+## 🚀 Installation
 
-## 🚀 **Getting Started**
+### 1. Clone the Repository
 
-### **Prerequisites**
-- Python 3.8+
-- Salesforce org access with API enabled
-- OpenAI API key
-- Required Python packages (see `config/requirements.txt`)
-
-### **Setup**
-1. **Clone repository and install dependencies**:
-   ```bash
-   pip install -r config/requirements.txt
-   ```
-
-2. **Configure environment variables**:
-   ```bash
-   cp config/env.example .env
-   # Edit .env with your Salesforce and OpenAI credentials
-   ```
-
-3. **Run the application**:
-   ```bash
-   python app.py
-   ```
-
-4. **Access web interface**: http://localhost:5000
-
-### **API Testing**
 ```bash
-# Test Salesforce connection
-curl http://localhost:5000/test-salesforce-connection
-
-# Test OpenAI connection  
-curl http://localhost:5000/test-openai-connection
-
-# Get single account analysis
-curl http://localhost:5000/account/0012H00001cH3WB
+git clone <repository-url>
+cd SFDC_Account_Matching
 ```
 
----
+### 2. Create Virtual Environment
 
-## 📊 **API Endpoints**
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/` | GET | Web interface |
-| `/account/{id}` | GET | Single account analysis |
-| `/accounts/analyze-query` | POST | Validate SOQL queries, return Account IDs |
-| `/accounts/get-data` | POST | Batch account data retrieval with full assessment |
-| `/excel/parse` | POST | Parse Excel files, return structure |
-| `/excel/validate-account-ids` | POST | Validate Account IDs from Excel |
-| `/export/soql-analysis` | POST | Export SOQL analysis results to Excel |
-| `/export/single-account` | POST | Export single account analysis to Excel |
-| `/export/excel-analysis` | POST | Export Excel analysis results to Excel |
-| `/test-salesforce-connection` | GET | Test Salesforce connectivity |
-| `/test-openai-connection` | GET | Test OpenAI API connectivity |
-
----
-
-## 🎯 **Usage Examples**
-
-### **SOQL Query Analysis**
-1. Enter complete SOQL query (e.g., `SELECT Id FROM Account WHERE Industry = 'Technology'`)
-2. Click "Validate Account IDs" to get account list
-3. Click "Analyze Accounts" for full assessment with flags and AI scoring
-4. Click "📊 Export to Excel" to download comprehensive analysis results
-
-### **Single Account Analysis**
-1. Enter Salesforce Account ID (15 or 18 characters)
-2. Click "Analyze Account" for immediate assessment
-3. Click "📊 Export to Excel" to download analysis results
-
-### **Excel Upload Analysis**
-1. Upload Excel file with Account IDs
-2. Click "Parse File" to extract structure
-3. Select sheet and Account ID column
-4. Click "Validate Account IDs" to verify with Salesforce
-5. Click "Analyze Accounts" for full assessment
-6. Click "📊 Export to Excel" to download original data + AI analysis
-
----
-
-## 📈 **Output Format**
-
-All workflows produce consistent, collapsible output with:
-
-### **Summary Section**
-- Processing statistics and execution time
-- Validation results and account counts
-
-### **Account Analysis**
-- **Account Details**: All 12 Salesforce fields in collapsible section
-- **Relationship Assessment Flags**: 4 computed flags with scores/explanations
-- **Parent Shell Account Data**: Shell account information (when applicable)
-- **AI-Powered Assessment**: Confidence score (0-100) with detailed reasoning bullets
-
-### **AI Assessment Features**
-- **External Knowledge**: Leverages AI's understanding of corporate relationships
-- **Confidence Scoring**: 0-100 scores indicating relationship validity
-- **Detailed Explanations**: Bullet-point reasoning for each assessment
-- **Error Handling**: Graceful fallback when AI service unavailable
-
-### **Excel Export Features**
-- **SOQL/Single Account**: Account metadata, assessment flags, and AI analysis in organized tables with frozen panes
-- **Excel Input**: Original Excel data + AI confidence score and explanation appended to the right
-- **Summary Tables**: Processing statistics and confidence score metrics
-- **RingCentral Theming**: Professional styling with corporate colors
-- **Sample Export**: [View sample SOQL analysis export](https://docs.google.com/spreadsheets/d/1N_o4rBYNrakOTZS25jTi7mx8AzqezeW0/edit?usp=sharing&ouid=113726783832302437979&rtpof=true&sd=true)
-- **Bad Domain Sample**: [View bad domain filtering example](https://docs.google.com/spreadsheets/d/1lR7YUN0i72QUC4spYk-xHTFDn-P3rk0p/edit?usp=sharing&ouid=113726783832302437979&rtpof=true&sd=true)
-- **Demo Walkthrough**: [Watch demo walkthrough](https://drive.google.com/file/d/1Y5TNF1La23kzbGhlaSc8GCIp3Fu11Uwo/view?usp=sharing)
-- **Latest Changes Demo**: [View recent feature updates](https://drive.google.com/file/d/1xoAItHK8u5FYcGWQhFZL8NRi3TYsIcb5/view?usp=sharing) 
-
----
-
-## 🔧 **Configuration**
-
-### **Environment Variables**
 ```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r config/requirements.txt
+```
+
+### 4. Configure Environment
+
+Copy the environment template and configure your credentials:
+
+```bash
+cp config/env.example .env
+```
+
+Edit `.env` with your credentials:
+
+```env
 # Salesforce Configuration
 SF_USERNAME=your_salesforce_username
 SF_PASSWORD=your_salesforce_password
-SF_SECURITY_TOKEN=your_salesforce_security_token
-SF_DOMAIN=login  # or test for sandbox
+SF_SECURITY_TOKEN=your_security_token
+SF_DOMAIN=login  # or your custom domain
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-4
 OPENAI_MAX_TOKENS=1000
+
+# Application Configuration
+FLASK_ENV=development
+FLASK_DEBUG=true
 ```
 
-### **Performance Settings**
-- **Batch Processing**: Up to 500 accounts per request
-- **Connection Timeout**: 1-hour Salesforce connection reuse
-- **Query Limits**: Configurable SOQL query limits
+## ⚙️ Configuration
+
+### Salesforce Setup
+
+1. **API Access**: Ensure your Salesforce user has API access
+2. **Security Token**: Generate a security token from Salesforce Setup
+3. **Custom Fields**: Verify ZI fields exist on Account object:
+   - `ZI_Company_Name__c`
+   - `ZI_Website__c`
+   - `ZI_Company_City__c`
+   - `ZI_Company_State__c`
+   - `ZI_Company_Country__c`
+   - `ZI_Company_Postal_Code__c`
+
+### OpenAI Setup
+
+1. **API Key**: Obtain from [OpenAI Platform](https://platform.openai.com/)
+2. **Model Access**: Ensure access to GPT-4 or desired model
+3. **Rate Limits**: Consider usage limits for batch processing
+
+## 📖 Usage
+
+### 1. Start the Application
+
+```bash
+source venv/bin/activate
+python app.py
+```
+
+Access the UI at: `http://localhost:5000`
+
+### 2. Step-by-Step Process
+
+#### Step 1: Upload Customer Accounts
+- Select Excel file containing customer account IDs
+- Choose sheet and column containing the IDs
+- System validates all IDs with Salesforce
+- **Invalid IDs are identified and excluded from matching**
+
+#### Step 2: Upload Shell Accounts
+- Select Excel file containing shell account IDs
+- Choose sheet and column containing the IDs
+- System validates all IDs and checks ZI data quality
+- **Invalid IDs are identified and excluded from matching**
+
+#### Step 3: Process Matching
+- Review summary of accounts to be processed
+- Click "Start Matching Process"
+- System performs intelligent matching with AI analysis
+- Progress indicator shows real-time status
+
+#### Step 4: Results & Export
+- View summary metrics and success rates
+- Browse detailed results table
+- Export comprehensive Excel report
+- Option to reset and start new process
+
+### 3. Excel File Requirements
+
+#### Input Files
+- **Format**: `.xlsx` or `.xls`
+- **Structure**: Any layout with identifiable Account ID column
+- **IDs**: Valid 15 or 18-character Salesforce Account IDs
+
+#### Example Customer File
+| Account Name | Account ID | Region |
+|--------------|------------|--------|
+| Acme Corp    | 0018c00002ABC123 | West |
+| Tech Inc     | 0018c00002DEF456 | East |
+
+#### Example Shell File
+| Shell Account | Shell ID | Category |
+|---------------|----------|----------|
+| Acme Corporation | 0018c00002XYZ789 | Enterprise |
+| Technology Inc   | 0018c00002UVW012 | SMB |
+
+## 🔌 API Documentation
+
+### Core Endpoints
+
+#### POST `/excel/parse-customer-file`
+Upload and validate customer account Excel file.
+
+**Parameters:**
+- `file`: Excel file upload
+- `sheet_name`: Sheet name containing data
+- `account_id_column`: Column name with Account IDs
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Validation complete: 48 valid, 2 invalid customer account IDs. Invalid IDs: [unknown, bad]. Invalid IDs will be excluded from matching.",
+  "data": {
+    "validation_summary": {
+      "valid_account_ids": ["0018c00002ABC123", "..."],
+      "invalid_account_ids": ["unknown", "bad"],
+      "total_from_excel": 50
+    }
+  }
+}
+```
+
+#### POST `/excel/parse-shell-file`
+Upload and validate shell account Excel file.
+
+#### POST `/matching/process-batch`
+Process dual-file matching algorithm.
+
+**Request:**
+```json
+{
+  "customer_account_ids": ["0018c00002ABC123", "..."],
+  "shell_account_ids": ["0018c00002XYZ789", "..."],
+  "invalid_customer_ids": ["unknown", "bad"],
+  "invalid_shell_ids": []
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": {
+      "total_customer_accounts": 50,
+      "matched_pairs": 45,
+      "unmatched_customers": 3,
+              "flagged_customer_accounts": 2,
+        "invalid_customer_accounts": 1,
+        "execution_time": "2.34s"
+      },
+      "matched_pairs": [...],
+      "unmatched_customers": [...],
+      "flagged_customers": [...],
+      "invalid_customers": [...]
+  }
+}
+```
+
+#### POST `/export/matching-results`
+Generate Excel export of matching results.
+
+### Testing Endpoints
+
+- `GET /health`: System health check
+- `GET /test-salesforce-connection`: Validate Salesforce connectivity
+- `GET /test-openai-connection`: Validate OpenAI API access
+
+## 📊 Data Fields
+
+### Customer Account Fields (Extracted)
+- `Id`: Salesforce Account ID
+- `Name`: Account name
+- `Website`: Company website
+- `BillingCity`: Billing city
+- `BillingState`: Billing state/province
+- `BillingCountry`: Billing country
+- `BillingPostalCode`: Billing postal code
+
+### Shell Account Fields (Extracted)
+- `Id`: Salesforce Account ID
+- `ZI_Id__c`: ZoomInfo company ID
+- `ZI_Company_Name__c`: ZoomInfo company name
+- `ZI_Website__c`: ZoomInfo website
+- `ZI_Company_City__c`: ZoomInfo company city
+- `ZI_Company_State__c`: ZoomInfo company state
+- `ZI_Company_Country__c`: ZoomInfo company country
+- `ZI_Company_Postal_Code__c`: ZoomInfo postal code
+
+## 🔍 Matching Algorithm
+
+### Two-Stage Retrieval Process
+
+#### Stage 1: Fast Filtering
+1. **Website Domain Matching**: Hash buckets by domain
+2. **Name-Based Filtering**: Normalized company names
+3. **Candidate Reduction**: Narrow to most promising matches
+
+#### Stage 2: Comprehensive Scoring
+1. **Website Match**: Domain and URL similarity
+2. **Name Match**: Fuzzy string matching with variations
+3. **Address Consistency**: Geographic alignment scoring
+4. **Overall Confidence**: Weighted combination of signals
+
+### Scoring Dimensions
+
+#### Website Match (0-100%)
+- Exact domain match: 100%
+- Subdomain match: 80%
+- Similar domains: 60%
+- No match: 0%
+
+#### Name Match (0-100%)
+- Exact match: 100%
+- High similarity: 80-99%
+- Moderate similarity: 50-79%
+- Low similarity: 20-49%
+- No match: 0-19%
+
+#### Address Consistency (0-100 points)
+- Country match: +30 points
+- State match: +30 points
+- City match: +30 points
+- Postal code match: +10 points
+
+### Data Precedence Rules
+1. **Website > Name**: Website domain takes priority for entity identity
+2. **Name > Address**: Company name more important than location
+3. **Combined Signals**: All factors contribute to final confidence
+
+## 📈 Excel Export Format
+
+### 📄 Sample Export
+**View a complete sample export:** [Sample Excel Export Results](https://docs.google.com/spreadsheets/d/1eXpxC7F79lLkkgTNtVCuXvzZSCkGwSzF/edit?usp=sharing&ouid=113726783832302437979&rtpof=true&sd=true)
+
+### Sheet 1: "Customer Match Results"
+Complete results with one row per customer account:
+
+| Column | Description |
+|--------|-------------|
+| Customer ID | Salesforce Account ID |
+| Customer Name | Account name |
+| Customer Website | Company website |
+| Customer Billing Address | Full billing address |
+| Match Status | MATCHED/UNMATCHED/FLAGGED/INVALID |
+| Match Reason | Explanation of status |
+| Recommended Shell ID | Best match shell ID (if any) |
+| Shell Name | Shell account name (if matched) |
+| Shell ZI ID | ZoomInfo company ID (if matched) |
+| Shell Website | Shell website (if matched) |
+| Shell Billing Address | Shell address (if matched) |
+| Overall Match Confidence | Combined confidence percentage |
+| Website Match Score | Website similarity score |
+| Name Match Score | Name similarity score |
+| Address Consistency Score | Address alignment score |
+| AI Confidence Score | OpenAI assessment score |
+| AI Explanation | Detailed AI reasoning |
+| Candidate Count | Number of shells evaluated |
+| Processing Notes | Technical details |
+
+### Sheet 2: "Summary Metrics"
+Processing statistics and success rates:
+
+| Metric | Description |
+|--------|-------------|
+| Total Customer Accounts Processed | Input count |
+| Successfully Matched | Matched pairs |
+| Unable to Match | No suitable shells found |
+| Flagged (Bad Domains) | Excluded accounts |
+| Invalid Account IDs | Invalid or non-existent IDs |
+| Total Shell Accounts Available | Shell universe size |
+| Processing Time | Execution duration |
+| Match Success Rate | Percentage matched |
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### Salesforce Connection Errors
+```
+Error: Invalid credentials or security token
+```
+**Solution**: 
+1. Verify username/password in `.env`
+2. Reset Salesforce security token
+3. Check domain configuration
+
+#### OpenAI API Errors
+```
+Error: Invalid API key
+```
+**Solution**:
+1. Verify API key in `.env`
+2. Check OpenAI account billing status
+3. Confirm model access permissions
+
+#### Excel Parsing Errors
+```
+Error: Column 'Account_ID' not found in sheet 'Sheet1'
+```
+**Solution**:
+1. Verify sheet name exactly matches
+2. Check column header spelling
+3. Ensure column contains Account IDs
+
+#### Invalid Account IDs
+```
+Validation complete: 48 valid, 2 invalid customer account IDs. 
+Invalid IDs: [unknown, bad]. Invalid IDs will be excluded from matching.
+```
+**Note**: Invalid IDs are automatically handled:
+1. Format validation catches non-Salesforce ID formats
+2. Salesforce validation identifies non-existent IDs  
+3. Invalid IDs are excluded from matching but included in final export
+4. Process continues with valid IDs only
+
+### Performance Optimization
+
+#### Large File Processing
+- **Batch Size**: System handles 500+ accounts efficiently
+- **Memory Usage**: Monitor for very large Excel files
+- **Timeout**: Increase for extensive shell universes
+
+#### API Rate Limits
+- **Salesforce**: Respect daily API limits
+- **OpenAI**: Consider rate limiting for large batches
+- **Retry Logic**: Built-in for transient failures
+
+### Logging and Debugging
+
+#### Enable Debug Mode
+```bash
+export FLASK_DEBUG=true
+python app.py
+```
+
+#### Log Locations
+- **Application**: Console output
+- **Salesforce**: API call details
+- **OpenAI**: Request/response logging
+
+## 🤝 Contributing
+
+### Development Setup
+
+1. **Fork Repository**: Create your feature branch
+2. **Virtual Environment**: Use isolated development environment
+3. **Dependencies**: Install development requirements
+4. **Testing**: Run test suite before committing
+
+### Code Style
+
+- **Python**: Follow PEP 8 guidelines
+- **JavaScript**: Use consistent formatting
+- **Comments**: Document complex logic
+- **Error Handling**: Comprehensive error management
+
+### Pull Request Process
+
+1. **Feature Branch**: Create from `main` branch
+2. **Testing**: Ensure all tests pass
+3. **Documentation**: Update README if needed
+4. **Review**: Submit PR with clear description
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+For support and questions:
+
+1. **Documentation**: Check this README first
+2. **Issues**: Create GitHub issue with details
+3. **Logs**: Include relevant error messages
+4. **Environment**: Specify Python/OS versions
 
 ---
 
-## 📝 **Documentation**
+## 🚀 Quick Start Summary
 
-- **[Project Breakdown](docs/project_breakdown.md)**: Complete project scope and requirements
-- **[Data Interpretation Guide](docs/data_interpretation.md)**: AI system prompt and assessment logic
-- **API Documentation**: Available at `/api` endpoint when running
-- **Configuration Guide**: See `config/env.example` for setup details
+```bash
+# 1. Setup
+git clone <repo-url> && cd SFDC_Account_Matching
+python -m venv venv && source venv/bin/activate
+pip install -r config/requirements.txt
 
----
+# 2. Configure
+cp config/env.example .env
+# Edit .env with your credentials
 
-## 🎯 **Project Goals Achievement**
+# 3. Run
+python app.py
+# Open http://localhost:5000
 
-This implementation **fully addresses** the project requirements outlined in [project_breakdown.md](docs/project_breakdown.md):
+# 4. Use
+# Upload customer Excel → Upload shell Excel → Process matching → Export results
 
-| Requirement | Status | Implementation |
-|-------------|--------|---------------|
-| **Data Extraction** | ✅ Complete | 12-field comprehensive account retrieval |
-| **Input Flexibility** | ✅ Complete | SOQL queries, single IDs, Excel uploads |
-| **Flag Computation** | ✅ Complete | All 4 flags implemented and computed |
-| **AI Confidence Scoring** | ✅ Complete | OpenAI GPT-4o integration with external knowledge |
-| **Explainability** | ✅ Complete | Detailed AI-generated explanations |
-| **Web Interface** | ✅ Complete | Full-featured UI with all input methods |
+# 5. View Sample Results
+# See sample export: https://docs.google.com/spreadsheets/d/1eXpxC7F79lLkkgTNtVCuXvzZSCkGwSzF/edit
+```
 
----
-
-## 🤝 **Contributing**
-
-This project is production-ready with clear separation of concerns:
-- **Core API**: Handle data retrieval and flag computation
-- **AI Integration**: Advanced scoring and explanation generation
-- **Web Interface**: User-friendly access to all functionality
-- **Excel Processing**: Batch workflow with validation
-
-Each component is fully implemented and tested, providing a complete solution for Salesforce account relationship assessment.
+**Your intelligent customer-to-shell account matching system is ready! 🎯**

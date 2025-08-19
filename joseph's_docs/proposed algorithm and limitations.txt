@@ -1,0 +1,17 @@
+limitations
+- both left and right tables have to be inputs | left table = accounts to search parent, right table = search space
+- right table has to be the universe of ZI Customer Shell Accounts in SFDC | business rule of parent account always has to be shell account
+- left table can be either customer account or zi customer shell, but let's limit to customer account in development for simplicity
+
+search algo
+- vectorize the fields (one hot encoding, or LLM, or vector embeddings) | I haven't found vector embeddings for business entity demographic info though
+- use similarity scoring, either through information retrieval metrics (eg cosine similarity, cosine distance etc) OR through nearest neighbor algorithms (kNN etc)
+- openAI usage could be to validate either the vectors, the output, or the process of vectorization itself, it could even be the search itself
+
+fields to use
+- for left table, it always has to be the non ZI fields, e.g. account name, website, and billing fields
+- for right table, it always has to be the ZI fields, e.g. zi account name, zi website, zi company country etc
+- we can limit address usage to just city, state, country, postal to reduce complexity
+
+for better business appreciation
+- scenarios like this happen when accounts are enriched sa small accounts (e.g. < 100 employees) but bought at least 100 digital seats from us and has high recurring revenue
