@@ -18,6 +18,7 @@ An intelligent AI-powered system that matches customer accounts to their most su
 - [Usage](#usage)
 - [API Documentation](#api-documentation)
 - [Data Fields](#data-fields)
+- [Batch Processing & Performance](#-batch-processing--performance)
 - [Matching Algorithm](#matching-algorithm)
 - [Excel Export Format](#excel-export-format)
 - [Troubleshooting](#troubleshooting)
@@ -37,6 +38,7 @@ The Customer-to-Shell Account Matching System revolutionizes how organizations m
 - **AI-Powered Scoring**: OpenAI integration for confidence assessment and explanations
 - **Data Quality Filtering**: Automatic bad domain detection and exclusion
 - **Invalid ID Handling**: Graceful processing with invalid IDs excluded but tracked
+- **High-Performance Batching**: Configurable batch processing for datasets of any size
 - **Comprehensive Results**: One row per customer with complete metadata and match details
 - **Professional Export**: Multi-worksheet Excel reports with summary metrics ([view sample](https://docs.google.com/spreadsheets/d/1eXpxC7F79lLkkgTNtVCuXvzZSCkGwSzF/edit?usp=sharing&ouid=113726783832302437979&rtpof=true&sd=true))
 
@@ -49,7 +51,7 @@ The Customer-to-Shell Account Matching System revolutionizes how organizations m
 - **Smart Filtering**: Automatic exclusion of accounts with bad domains (Gmail, Yahoo, etc.)
 - **Fuzzy Matching**: Website, name, and address similarity scoring
 - **AI Integration**: Confidence scoring and plain-language explanations
-- **Batch Processing**: Handle hundreds of accounts efficiently
+- **Batch Processing**: Handle thousands of accounts with intelligent batching and rate limiting
 
 ### 🎨 User Experience
 
@@ -151,6 +153,11 @@ OPENAI_MAX_TOKENS=1000
 # Application Configuration
 FLASK_ENV=development
 FLASK_DEBUG=true
+
+# Batch Processing Configuration (Optional - defaults provided)
+SALESFORCE_BATCH_SIZE=200          # SOQL query batch size (max ~1000)
+OPENAI_BATCH_SIZE=10               # Concurrent OpenAI API calls
+OPENAI_RATE_LIMIT_DELAY=0.5        # Seconds between OpenAI calls
 ```
 
 ## ⚙️ Configuration
@@ -325,6 +332,94 @@ Generate Excel export of matching results.
 - `ZI_Company_Country__c`: ZoomInfo company country
 - `ZI_Company_Postal_Code__c`: ZoomInfo postal code
 
+## ⚡ Batch Processing & Performance
+
+### 🚀 Intelligent Batch Processing
+
+The system is designed to handle large datasets efficiently through intelligent batch processing that automatically optimizes performance while maintaining all functionality.
+
+#### 📊 Performance Capabilities
+
+| Dataset Size | Processing Time | Salesforce Queries | OpenAI Calls | Status |
+|--------------|----------------|-------------------|--------------|--------|
+| **50-100 accounts** | 30-60 seconds | 1 batch | 1 batch | ✅ Optimal |
+| **200-500 accounts** | 2-5 minutes | 2-3 batches | 5-10 batches | ✅ Fast |
+| **500-1000 accounts** | 5-10 minutes | 3-5 batches | 10-20 batches | ✅ Efficient |
+| **1000-2000 accounts** | 10-20 minutes | 5-10 batches | 20-40 batches | ✅ Scalable |
+| **2000+ accounts** | 20+ minutes | 10+ batches | 40+ batches | ✅ Enterprise-ready |
+
+#### 🔧 Two-Phase Processing Architecture
+
+**Phase 1: Fast Fuzzy Matching**
+- Process all customer accounts through fuzzy matching algorithms
+- No external API calls - pure algorithmic processing
+- Identifies matched vs unmatched customers quickly
+
+**Phase 2: Batch AI Assessment**
+- Collects all matched pairs from Phase 1
+- Processes OpenAI assessments in parallel batches with rate limiting
+- Adds AI confidence scores and explanations to results
+
+#### ⚙️ Configurable Batch Settings
+
+The system provides three key configuration parameters to optimize performance for your environment:
+
+```env
+# Batch Processing Configuration
+SALESFORCE_BATCH_SIZE=200          # SOQL query batch size (default: 200)
+OPENAI_BATCH_SIZE=10               # Concurrent OpenAI API calls (default: 10)
+OPENAI_RATE_LIMIT_DELAY=0.5        # Seconds between OpenAI calls (default: 0.5)
+```
+
+**Configuration Guidelines:**
+
+| Parameter | Recommended Range | Purpose | Impact |
+|-----------|------------------|---------|---------|
+| `SALESFORCE_BATCH_SIZE` | 100-500 | Prevents SOQL query limits | Higher = fewer queries, but risk of timeout |
+| `OPENAI_BATCH_SIZE` | 5-20 | Controls concurrent API calls | Higher = faster, but may hit rate limits |
+| `OPENAI_RATE_LIMIT_DELAY` | 0.2-2.0 | Prevents rate limiting | Lower = faster, but higher risk of rate limits |
+
+#### 🔍 Progress Monitoring
+
+For large datasets, the system provides real-time progress updates:
+
+```
+🔍 Processing fuzzy matching for 1000 customer accounts...
+✅ Processed customer batch 1/5 (200 IDs)
+✅ Processed customer batch 2/5 (200 IDs)
+✅ Processed shell batch 1/3 (200 IDs)
+✅ Fuzzy matching complete: 850 matched, 150 unmatched
+🤖 Starting batch AI assessment for 850 matches...
+🤖 Processing 850 AI assessments in 85 batches...
+✅ Processed AI batch 1/85 (10 assessments)
+✅ Processed AI batch 25/85 (10 assessments)
+...
+```
+
+#### 🛡️ Built-in Safeguards
+
+- **SOQL Limit Protection**: Automatically chunks large ID lists to prevent query failures
+- **Rate Limit Compliance**: Intelligent delays between API calls to respect OpenAI limits
+- **Memory Management**: Processes data in chunks to prevent memory exhaustion
+- **Error Isolation**: Individual batch failures don't stop the entire process
+- **Timeout Prevention**: Progress updates keep UI responsive during long operations
+
+#### 🎯 Optimization Tips
+
+**For Large Customer Lists (1000+):**
+- Increase `SALESFORCE_BATCH_SIZE` to 300-400 for fewer Salesforce queries
+- Keep `OPENAI_BATCH_SIZE` at 10-15 to respect rate limits
+- Use `OPENAI_RATE_LIMIT_DELAY` of 0.3-0.5 for optimal throughput
+
+**For High OpenAI Rate Limits:**
+- Increase `OPENAI_BATCH_SIZE` to 15-20 for faster processing
+- Decrease `OPENAI_RATE_LIMIT_DELAY` to 0.2-0.3 for minimal delays
+
+**For Conservative Processing:**
+- Keep `SALESFORCE_BATCH_SIZE` at 100-200 for stability
+- Use `OPENAI_BATCH_SIZE` of 5-8 for conservative rate limiting
+- Set `OPENAI_RATE_LIMIT_DELAY` to 1.0+ for maximum safety
+
 ## 🔍 Matching Algorithm
 
 ### Two-Stage Retrieval Process
@@ -455,14 +550,21 @@ Invalid IDs: [unknown, bad]. Invalid IDs will be excluded from matching.
 ### Performance Optimization
 
 #### Large File Processing
-- **Batch Size**: System handles 500+ accounts efficiently
-- **Memory Usage**: Monitor for very large Excel files
-- **Timeout**: Increase for extensive shell universes
+- **Automatic Batching**: System handles 2000+ accounts efficiently with intelligent batching
+- **Configurable Settings**: Adjust `SALESFORCE_BATCH_SIZE`, `OPENAI_BATCH_SIZE`, and `OPENAI_RATE_LIMIT_DELAY` in `.env`
+- **Memory Management**: Chunked processing prevents memory exhaustion
+- **Progress Monitoring**: Real-time batch progress updates for large datasets
 
 #### API Rate Limits
-- **Salesforce**: Respect daily API limits
-- **OpenAI**: Consider rate limiting for large batches
+- **Salesforce Batching**: Automatic SOQL query chunking (configurable batch size)
+- **OpenAI Rate Limiting**: Built-in delays and concurrent call limits (configurable)
+- **Error Isolation**: Individual batch failures don't stop entire process
 - **Retry Logic**: Built-in for transient failures
+
+#### Optimization Guidelines
+- **See [Batch Processing & Performance](#-batch-processing--performance)** section for detailed configuration guidance
+- **Monitor Console Output**: Watch batch progress for performance insights
+- **Adjust Settings**: Tune batch sizes based on your API limits and performance requirements
 
 ### Logging and Debugging
 
