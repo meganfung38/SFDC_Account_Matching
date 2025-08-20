@@ -98,6 +98,11 @@ class Config:
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
     OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '1000'))
     
+    # Batch Processing Configuration
+    SALESFORCE_BATCH_SIZE = int(os.getenv('SALESFORCE_BATCH_SIZE', '200'))  # SOQL IN clause safety
+    OPENAI_BATCH_SIZE = int(os.getenv('OPENAI_BATCH_SIZE', '10'))  # Concurrent API calls
+    OPENAI_RATE_LIMIT_DELAY = float(os.getenv('OPENAI_RATE_LIMIT_DELAY', '0.5'))  # Seconds between calls
+    
     @staticmethod
     def validate_salesforce_config():
         """Validate that all required Salesforce credentials are present"""

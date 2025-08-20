@@ -1,5 +1,8 @@
 import openai
 import json
+import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from config.config import Config
 
 # configure openAI access 
@@ -218,6 +221,60 @@ def get_ai_match_assessment(customer_data: dict, shell_data: dict, match_scores:
             'success': False,
             'error': f"Error calling OpenAI: {str(e)}"
         }
+
+def get_ai_match_assessments_batch(match_pairs: list, batch_size: int = 10, delay_between_calls: float = 1.0) -> list:
+    """
+    Process multiple AI assessments with rate limiting and batch processing
+    Args:
+        match_pairs: List of dicts with 'customer_account', 'shell_account', and 'match_scores'
+        batch_size: Number of concurrent requests (default 10 to respect rate limits)
+        delay_between_calls: Delay in seconds between API calls (default 1.0)
+    Returns:
+        List of AI assessment results in same order as input
+    """
+    def process_single_assessment(pair_data):
+        """Process a single assessment with error handling"""
+        try:
+            customer = pair_data['customer_account']
+            shell = pair_data['shell_account'] 
+            scores = pair_data['match_scores']
+            
+            # Add small delay to respect rate limits
+            time.sleep(delay_between_calls)
+            
+            return get_ai_match_assessment(customer, shell, scores)
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f"Batch processing error: {str(e)}"
+            }
+    
+    # Process in batches to manage memory and rate limits
+    all_results = []
+    total_batches = (len(match_pairs) + batch_size - 1) // batch_size
+    
+    print(f"🤖 Processing {len(match_pairs)} AI assessments in {total_batches} batches...")
+    
+    for batch_num in range(total_batches):
+        start_idx = batch_num * batch_size
+        end_idx = min(start_idx + batch_size, len(match_pairs))
+        batch_pairs = match_pairs[start_idx:end_idx]
+        
+        # Use ThreadPoolExecutor for controlled concurrency
+        with ThreadPoolExecutor(max_workers=min(batch_size, len(batch_pairs))) as executor:
+            batch_results = list(executor.map(process_single_assessment, batch_pairs))
+        
+        all_results.extend(batch_results)
+        
+        # Log progress for large datasets
+        if total_batches > 1:
+            print(f"✅ Processed AI batch {batch_num + 1}/{total_batches} ({len(batch_pairs)} assessments)")
+        
+        # Add delay between batches for rate limiting
+        if batch_num < total_batches - 1:  # Don't delay after last batch
+            time.sleep(delay_between_calls * 2)  # Longer delay between batches
+    
+    return all_results
 
 def test_openai_connection():
     """Test OpenAI connection by listing available models"""

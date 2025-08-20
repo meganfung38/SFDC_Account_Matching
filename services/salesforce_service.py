@@ -90,11 +90,12 @@ class SalesforceService:
     
     # NEW METHODS FOR DUAL-FILE MATCHING SYSTEM
     
-    def get_customer_accounts_bulk(self, account_ids: list) -> tuple[Optional[list], str]:
+    def get_customer_accounts_bulk(self, account_ids: list, batch_size: int = 200) -> tuple[Optional[list], str]:
         """
-        Query customer account data for matching - returns customer account fields only
+        Query customer account data for matching with batching for large datasets
         Args:
             account_ids: List of customer account IDs
+            batch_size: Number of IDs to process per batch (default 200 for SOQL safety)
         Returns:
             Tuple of (account_data_list, message)
         """
@@ -113,35 +114,49 @@ class SalesforceService:
                 else:
                     query_account_ids.append(str(aid).strip())
             
-            # Build batch query for customer account fields
-            ids_string = "', '".join(query_account_ids)
-            customer_query = f"""
-            SELECT Id, Name, Website, 
-                   BillingCity, BillingState, BillingCountry, BillingPostalCode
-            FROM Account
-            WHERE Id IN ('{ids_string}')
-            """
+            # Process in batches to avoid SOQL limits
+            all_customer_accounts = []
+            total_batches = (len(query_account_ids) + batch_size - 1) // batch_size
             
-            assert self.sf is not None
-            result = self.sf.query(customer_query)
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(query_account_ids))
+                batch_ids = query_account_ids[start_idx:end_idx]
+                
+                # Build batch query for customer account fields
+                ids_string = "', '".join(batch_ids)
+                customer_query = f"""
+                SELECT Id, Name, Website, 
+                       BillingCity, BillingState, BillingCountry, BillingPostalCode
+                FROM Account
+                WHERE Id IN ('{ids_string}')
+                """
+                
+                assert self.sf is not None
+                result = self.sf.query(customer_query)
+                
+                # Process batch results
+                for record in result['records']:
+                    # Remove Salesforce metadata if present
+                    if 'attributes' in record:
+                        del record['attributes']
+                    all_customer_accounts.append(record)
+                
+                # Log progress for large datasets
+                if total_batches > 1:
+                    print(f"✅ Processed customer batch {batch_num + 1}/{total_batches} ({len(batch_ids)} IDs)")
             
-            customer_accounts = []
-            for record in result['records']:
-                # Remove Salesforce metadata if present
-                if 'attributes' in record:
-                    del record['attributes']
-                customer_accounts.append(record)
-            
-            return customer_accounts, f"Successfully retrieved {len(customer_accounts)} customer accounts"
+            return all_customer_accounts, f"Successfully retrieved {len(all_customer_accounts)} customer accounts across {total_batches} batches"
             
         except Exception as e:
             return None, f"Error querying customer accounts: {str(e)}"
     
-    def get_shell_accounts_bulk(self, account_ids: list) -> tuple[Optional[list], str]:
+    def get_shell_accounts_bulk(self, account_ids: list, batch_size: int = 200) -> tuple[Optional[list], str]:
         """
-        Query shell account data for matching - returns ZI enriched fields only
+        Query shell account data for matching with batching for large datasets
         Args:
             account_ids: List of shell account IDs
+            batch_size: Number of IDs to process per batch (default 200 for SOQL safety)
         Returns:
             Tuple of (account_data_list, message)
         """
@@ -160,26 +175,39 @@ class SalesforceService:
                 else:
                     query_account_ids.append(str(aid).strip())
             
-            # Build batch query for shell account ZI fields
-            ids_string = "', '".join(query_account_ids)
-            shell_query = f"""
-            SELECT Id, ZI_Id__c, ZI_Company_Name__c, ZI_Website__c, 
-                   ZI_Company_City__c, ZI_Company_State__c, ZI_Company_Country__c, ZI_Company_Postal_Code__c
-            FROM Account 
-            WHERE Id IN ('{ids_string}')
-            """
+            # Process in batches to avoid SOQL limits
+            all_shell_accounts = []
+            total_batches = (len(query_account_ids) + batch_size - 1) // batch_size
             
-            assert self.sf is not None
-            result = self.sf.query(shell_query)
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(query_account_ids))
+                batch_ids = query_account_ids[start_idx:end_idx]
+                
+                # Build batch query for shell account ZI fields
+                ids_string = "', '".join(batch_ids)
+                shell_query = f"""
+                SELECT Id, ZI_Id__c, ZI_Company_Name__c, ZI_Website__c, 
+                       ZI_Company_City__c, ZI_Company_State__c, ZI_Company_Country__c, ZI_Company_Postal_Code__c
+                FROM Account 
+                WHERE Id IN ('{ids_string}')
+                """
+                
+                assert self.sf is not None
+                result = self.sf.query(shell_query)
+                
+                # Process batch results
+                for record in result['records']:
+                    # Remove Salesforce metadata if present
+                    if 'attributes' in record:
+                        del record['attributes']
+                    all_shell_accounts.append(record)
+                
+                # Log progress for large datasets
+                if total_batches > 1:
+                    print(f"✅ Processed shell batch {batch_num + 1}/{total_batches} ({len(batch_ids)} IDs)")
             
-            shell_accounts = []
-            for record in result['records']:
-                # Remove Salesforce metadata if present
-                if 'attributes' in record:
-                    del record['attributes']
-                shell_accounts.append(record)
-            
-            return shell_accounts, f"Successfully retrieved {len(shell_accounts)} shell accounts"
+            return all_shell_accounts, f"Successfully retrieved {len(all_shell_accounts)} shell accounts across {total_batches} batches"
             
         except Exception as e:
             return None, f"Error querying shell accounts: {str(e)}"

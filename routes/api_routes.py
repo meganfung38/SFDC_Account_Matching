@@ -424,16 +424,23 @@ def process_matching_batch():
                 "message": "At least one customer and one shell account ID must be provided"
             }), 400
         
-        # Get customer account data from Salesforce
-        customer_data, customer_message = sf_service.get_customer_accounts_bulk(customer_account_ids)
+        # Get customer account data from Salesforce (with batching)
+        from config.config import Config
+        customer_data, customer_message = sf_service.get_customer_accounts_bulk(
+            customer_account_ids, 
+            batch_size=Config.SALESFORCE_BATCH_SIZE
+        )
         if customer_data is None:
             return jsonify({
                 "status": "error",
                 "message": f"Error retrieving customer account data: {customer_message}"
             }), 500
         
-        # Get shell account data from Salesforce  
-        shell_data, shell_message = sf_service.get_shell_accounts_bulk(shell_account_ids)
+        # Get shell account data from Salesforce (with batching)  
+        shell_data, shell_message = sf_service.get_shell_accounts_bulk(
+            shell_account_ids,
+            batch_size=Config.SALESFORCE_BATCH_SIZE
+        )
         if shell_data is None:
             return jsonify({
                 "status": "error",
@@ -445,12 +452,16 @@ def process_matching_batch():
         
         # Process matching for clean customer accounts
         import time
-        from services.openai_service import get_ai_match_assessment
+        from services.openai_service import get_ai_match_assessments_batch
         
         start_time = time.time()
         matched_pairs = []
         unmatched_customers = []
+        ai_assessment_data = []  # Store data for batch AI processing
         
+        print(f"🔍 Processing fuzzy matching for {len(clean_customers)} customer accounts...")
+        
+        # Phase 1: Fuzzy matching (fast, no API calls)
         for customer in clean_customers:
             # Find best shell match using fuzzy matching
             match_result = fuzzy_matcher.find_best_shell_match(customer, shell_data)
@@ -458,14 +469,14 @@ def process_matching_batch():
             if match_result['success']:
                 best_match = match_result['best_match']
                 
-                # Get AI assessment for the match
-                ai_assessment = get_ai_match_assessment(
-                    customer, 
-                    best_match['shell_account'], 
-                    best_match
-                )
+                # Prepare data for batch AI processing
+                ai_assessment_data.append({
+                    'customer_account': customer,
+                    'shell_account': best_match['shell_account'],
+                    'match_scores': best_match
+                })
                 
-                # Create match pair result
+                # Create match pair result (without AI assessment for now)
                 match_pair = {
                     'customer_account': customer,
                     'recommended_shell': best_match['shell_account'],
@@ -474,11 +485,6 @@ def process_matching_batch():
                     'name_match': best_match['name_match'], 
                     'address_consistency': best_match['address_consistency'],
                     'explanations': best_match['explanations'],
-                    'ai_assessment': {
-                        'confidence_score': ai_assessment.get('confidence_score', 0),
-                        'explanation_bullets': ai_assessment.get('explanation_bullets', []),
-                        'success': ai_assessment.get('success', False)
-                    },
                     'candidate_count': match_result['candidate_count'],
                     'total_shells': match_result['total_shells']
                 }
@@ -488,6 +494,26 @@ def process_matching_batch():
                     'customer_account': customer,
                     'reason': match_result['message']
                 })
+        
+        print(f"✅ Fuzzy matching complete: {len(matched_pairs)} matched, {len(unmatched_customers)} unmatched")
+        
+        # Phase 2: Batch AI processing for matched pairs
+        if ai_assessment_data:
+            print(f"🤖 Starting batch AI assessment for {len(ai_assessment_data)} matches...")
+            ai_results = get_ai_match_assessments_batch(
+                ai_assessment_data, 
+                batch_size=Config.OPENAI_BATCH_SIZE, 
+                delay_between_calls=Config.OPENAI_RATE_LIMIT_DELAY
+            )
+            
+            # Add AI results to matched pairs
+            for i, ai_assessment in enumerate(ai_results):
+                if i < len(matched_pairs):
+                    matched_pairs[i]['ai_assessment'] = {
+                        'confidence_score': ai_assessment.get('confidence_score', 0),
+                        'explanation_bullets': ai_assessment.get('explanation_bullets', []),
+                        'success': ai_assessment.get('success', False)
+                    }
         
         execution_time = time.time() - start_time
         
