@@ -9,6 +9,7 @@ An intelligent AI-powered system that matches customer accounts to their most su
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Demo Video](#🎥-demo-video)
 - [Features](#features)
 - [System Architecture](#system-architecture)
 - [Prerequisites](#prerequisites)
@@ -25,6 +26,9 @@ An intelligent AI-powered system that matches customer accounts to their most su
 ## 🎯 Overview
 
 The Customer-to-Shell Account Matching System revolutionizes how organizations manage their account hierarchies in Salesforce. Instead of manual relationship assessment, this system uses advanced fuzzy matching algorithms and AI-powered analysis to intelligently match customer accounts to their optimal parent shell accounts.
+
+### 🎥 Demo Video
+**Watch the system in action:** [Demo Walkthrough](https://drive.google.com/file/d/1gAKrTDIhgsVqMadivsJlcFw1PXiS2IBO/view?usp=sharing)
 
 ### Key Capabilities
 
@@ -179,6 +183,8 @@ python app.py
 ```
 
 Access the UI at: `http://localhost:5000`
+
+**💡 New to the system?** [Watch the demo walkthrough](https://drive.google.com/file/d/1gAKrTDIhgsVqMadivsJlcFw1PXiS2IBO/view?usp=sharing) to see the complete process in action.
 
 ### 2. Step-by-Step Process
 
@@ -530,6 +536,9 @@ python app.py
 
 # 5. View Sample Results
 # See sample export: https://docs.google.com/spreadsheets/d/1eXpxC7F79lLkkgTNtVCuXvzZSCkGwSzF/edit
+
+# 6. Watch Demo
+# See demo video: https://drive.google.com/file/d/1gAKrTDIhgsVqMadivsJlcFw1PXiS2IBO/view
 ```
 
 **Your intelligent customer-to-shell account matching system is ready! 🎯**
